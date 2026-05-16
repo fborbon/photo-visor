@@ -7,10 +7,8 @@ import config from '../config';
 import { PhotoEntry, AlbumRef, TagEntry, UserTags, SharedTagEntry, SharedTags } from '../types';
 
 interface TagsCtx {
-  // Own private tags
   tags:            Record<string, TagEntry>;
   tagNames:        string[];
-  // Shared tags from all family members
   sharedTags:      Record<string, SharedTagEntry>;
   sharedTagNames:  string[];
 
@@ -24,7 +22,6 @@ interface TagsCtx {
   setComment:      (hash: string, text: string) => Promise<void>;
   commentTimes:    Record<string, string>;
 
-  // helpers
   ownerKey:        string;
   isMySharedTag:   (tagName: string) => boolean;
 }
@@ -43,6 +40,19 @@ const SHARED_KEY = 'index/tags/shared.json';
 const emptyPrivate: UserTags   = { updated: '', tags: {}, comments: {}, commentTimes: {} };
 const emptyShared:  SharedTags = { updated: '', tags: {} };
 
+// ── localStorage keys ──────────────────────────────────────────────
+function lsPrivateKey(ownerKey: string) { return 'pv_tags_' + ownerKey; }
+const LS_SHARED_KEY = 'pv_tags_shared';
+
+function lsGet<T>(key: string): T | null {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) as T : null; }
+  catch { return null; }
+}
+function lsSet(key: string, data: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* quota exceeded — ignore */ }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────
 function emailToKey(email: string) {
   return 'index/tags/' + email.toLowerCase().replace(/[^a-z0-9]/g, '_') + '.json';
 }
@@ -54,11 +64,21 @@ async function getS3(region: string, creds: unknown) {
   return new S3Client({ region, credentials: creds as never });
 }
 
+// CacheControl: no-cache ensures CloudFront never serves a stale version
+// of a tag/comment file after it has been updated.
 async function putJson(s3: S3Client, key: string, data: unknown) {
   await s3.send(new PutObjectCommand({
     Bucket: config.bucketName, Key: key,
     Body: JSON.stringify(data), ContentType: 'application/json',
+    CacheControl: 'no-cache, no-store, must-revalidate',
   }));
+}
+
+function mergePrivate(a: UserTags, b: UserTags): UserTags {
+  // Return whichever has the later `updated` timestamp.
+  // Falls back to `b` when timestamps are equal or missing.
+  if (a.updated && b.updated && a.updated > b.updated) return a;
+  return b;
 }
 
 export function TagsProvider({ children }: { children: ReactNode }) {
@@ -68,7 +88,7 @@ export function TagsProvider({ children }: { children: ReactNode }) {
   const [myOwnerKey,  setMyOwnerKey]  = useState('');
   const [myEmail,     setMyEmail]     = useState('');
 
-  // Load own private tags
+  // ── Load private tags ──────────────────────────────────────────────
   useEffect(() => {
     getCurrentUser().then(u => {
       const email = u.signInDetails?.loginId ?? '';
@@ -77,32 +97,69 @@ export function TagsProvider({ children }: { children: ReactNode }) {
       setS3Key(key);
       setMyOwnerKey(okey);
       setMyEmail(email);
-      fetch(config.cloudFrontUrl + '/' + key + '?t=' + Date.now())
-        .then(r => (r.ok ? r.json() as Promise<UserTags> : emptyPrivate))
-        .then((d: UserTags) => setPrivateData({ ...d, comments: d.comments ?? {}, commentTimes: d.commentTimes ?? {} }))
-        .catch(() => setPrivateData(emptyPrivate));
+
+      // 1. Load from localStorage immediately — zero latency on refresh/upgrade
+      const cached = lsGet<UserTags>(lsPrivateKey(okey));
+      if (cached) {
+        setPrivateData({
+          ...cached,
+          comments:     cached.comments     ?? {},
+          commentTimes: cached.commentTimes ?? {},
+        });
+      }
+
+      // 2. Fetch from S3 (bypassing CloudFront cache with timestamp)
+      fetch(config.cloudFrontUrl + '/' + key + '?nc=' + Date.now())
+        .then(r => (r.ok ? r.json() as Promise<UserTags> : null))
+        .then((remote: UserTags | null) => {
+          if (!remote) return;
+          const remoteNorm: UserTags = {
+            ...remote,
+            comments:     remote.comments     ?? {},
+            commentTimes: remote.commentTimes ?? {},
+          };
+          // Merge: keep whichever version is newer
+          setPrivateData(local => {
+            const winner = mergePrivate(local, remoteNorm);
+            lsSet(lsPrivateKey(okey), winner);
+            return winner;
+          });
+        })
+        .catch(() => { /* keep whatever localStorage gave us */ });
     }).catch(() => {});
   }, []);
 
-  // Load shared tags (all users)
+  // ── Load shared tags ───────────────────────────────────────────────
   useEffect(() => {
-    fetch(config.cloudFrontUrl + '/' + SHARED_KEY + '?t=' + Date.now())
-      .then(r => (r.ok ? r.json() as Promise<SharedTags> : emptyShared))
-      .then(setSharedData)
-      .catch(() => setSharedData(emptyShared));
+    // Pre-populate from localStorage while network loads
+    const cached = lsGet<SharedTags>(LS_SHARED_KEY);
+    if (cached) setSharedData(cached);
+
+    fetch(config.cloudFrontUrl + '/' + SHARED_KEY + '?nc=' + Date.now())
+      .then(r => (r.ok ? r.json() as Promise<SharedTags> : null))
+      .then((remote: SharedTags | null) => {
+        if (!remote) return;
+        setSharedData(remote);
+        lsSet(LS_SHARED_KEY, remote);
+      })
+      .catch(() => { /* keep cached */ });
   }, []);
 
   // ── Persist helpers ────────────────────────────────────────────────
   const persistPrivate = useCallback(async (next: UserTags) => {
+    // Update state and localStorage synchronously
     setPrivateData(next);
+    if (myOwnerKey) lsSet(lsPrivateKey(myOwnerKey), next);
+    // Then persist to S3 asynchronously
     const session = await fetchAuthSession();
     if (!session.credentials || !s3Key) return;
     const s3 = await getS3(config.region, session.credentials);
     await putJson(s3, s3Key, next);
-  }, [s3Key]);
+  }, [s3Key, myOwnerKey]);
 
   const persistShared = useCallback(async (next: SharedTags) => {
     setSharedData(next);
+    lsSet(LS_SHARED_KEY, next);
     const session = await fetchAuthSession();
     if (!session.credentials) return;
     const s3 = await getS3(config.region, session.credentials);
