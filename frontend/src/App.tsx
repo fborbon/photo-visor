@@ -23,7 +23,9 @@ function Shell() {
         <div className="app">
 
           <header className="topbar">
-            <span className="topbar-logo">📷 {tr.appTitle}</span>
+            <span className="topbar-logo">
+              <span style={{ color: '#ff0084' }}>foto</span>visor
+            </span>
 
             <nav className="tab-nav">
               <button

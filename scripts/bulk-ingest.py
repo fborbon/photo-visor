@@ -778,9 +778,12 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
 def _put_index(s3, key: str, data, dry_run: bool):
     body = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()
     if not dry_run:
+        # recent.json changes every ingest — never cache it
+        # Other index files can be cached for 1 hour
+        cache_control = "no-cache, no-store, must-revalidate" if "recent" in key else "max-age=3600"
         s3.put_object(Bucket=BUCKET, Key=key, Body=body,
                       ContentType="application/json",
-                      CacheControl="max-age=3600",
+                      CacheControl=cache_control,
                       ContentEncoding="identity")
 
 

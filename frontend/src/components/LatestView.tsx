@@ -1,15 +1,18 @@
 import { useState } from 'react';
-import { useTags }   from '../context/TagsContext';
-import { useLang }   from '../context/LangContext';
-import { useIndex }  from '../hooks/useIndex';
+import { useTags }        from '../context/TagsContext';
+import { useLang }        from '../context/LangContext';
+import { useIndex }       from '../hooks/useIndex';
 import { RecentIndex, PhotoEntry } from '../types';
-import PhotoGrid     from './PhotoGrid';
-import config        from '../config';
+import PhotoGrid          from './PhotoGrid';
+import PhotoModal         from './PhotoModal';
+import AddTagModal        from './AddTagModal';
+import AddCommentModal    from './AddCommentModal';
+import config             from '../config';
 
 type Subtab = 'added' | 'tags' | 'comments';
 
 const LS_KEY = (s: Subtab) => 'latest_cleared_' + s;
-const STRIP  = 6;   // max thumbs shown per tag strip
+const STRIP  = 6;
 
 function loadCleared(s: Subtab): string {
   return localStorage.getItem(LS_KEY(s)) ?? '';
@@ -30,8 +33,17 @@ export default function LatestView() {
   const [clearedTags,     setClearedTags]     = useState(() => loadCleared('tags'));
   const [clearedComments, setClearedComments] = useState(() => loadCleared('comments'));
 
-  // Modal state for comment photos
-  const [modalPhoto,  setModalPhoto]  = useState<PhotoEntry | null>(null);
+  // ── Full-size modal state ──────────────────────────────────────────
+  const [modalPhotos, setModalPhotos] = useState<PhotoEntry[]>([]);
+  const [modalIdx,    setModalIdx]    = useState<number | null>(null);
+  const [addTagPhoto, setAddTagPhoto] = useState<PhotoEntry | null>(null);
+  const [commentPhoto,setCommentPhoto]= useState<PhotoEntry | null>(null);
+
+  function openModal(photos: PhotoEntry[], idx: number) {
+    setModalPhotos(photos);
+    setModalIdx(idx);
+  }
+  function closeModal() { setModalIdx(null); setModalPhotos([]); }
 
   function clear(s: Subtab) {
     const now = new Date().toISOString();
@@ -47,8 +59,13 @@ export default function LatestView() {
   const { data: recentIndex, loading: recentLoading } = useIndex<RecentIndex>(
     subtab === 'added' ? 'index/recent.json' : null
   );
+  const clearedAddedMs = clearedAdded ? Date.parse(clearedAdded) : 0;
   const addedPhotos = recentIndex
-    ? recentIndex.photos.filter(p => !clearedAdded || p.addedAt > clearedAdded)
+    ? recentIndex.photos.filter(p => {
+        if (!clearedAdded) return true;
+        const ts = Date.parse(p.addedAt);
+        return !isNaN(ts) && ts > clearedAddedMs;
+      })
     : [];
 
   // ── Tags subtab ───────────────────────────────────────────────────
@@ -80,10 +97,15 @@ export default function LatestView() {
     .filter(c => c.text && (!clearedComments || c.updatedAt > clearedComments))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
+  // Navigable list of photos for the comments modal
+  const commentPhotos = commentItems.map(c => c.photo).filter(Boolean) as PhotoEntry[];
+
   const canClear =
     (subtab === 'added'    && addedPhotos.length > 0) ||
     (subtab === 'tags'     && allTagsSorted.length > 0) ||
     (subtab === 'comments' && commentItems.length > 0);
+
+  const currentPhoto = modalIdx !== null ? modalPhotos[modalIdx] : null;
 
   return (
     <div className="latest-layout">
@@ -130,6 +152,8 @@ export default function LatestView() {
                   const thumbPhotos = t.photos.filter(p => p.thumb).slice(0, STRIP);
                   const extra = t.photos.length - thumbPhotos.length;
                   const total = t.photos.length + t.albums.length;
+                  // Full navigable list for this tag (all photos with thumbs)
+                  const tagPhotos = t.photos.filter(p => p.thumb);
                   return (
                     <div key={(t.shared ? 's:' : 'p:') + t.name} className="latest-tag-card">
                       <div className="latest-tag-header">
@@ -146,6 +170,7 @@ export default function LatestView() {
                               className="latest-strip-thumb"
                               src={config.cloudFrontUrl + '/' + p.thumb}
                               alt=""
+                              onClick={() => openModal(tagPhotos, tagPhotos.indexOf(p))}
                             />
                           ))}
                           {extra > 0 && (
@@ -169,53 +194,75 @@ export default function LatestView() {
             ? <p className="panel-loading">{tr.noRecentComments}</p>
             : (
               <div className="latest-comment-cards">
-                {commentItems.map(c => (
-                  <div key={c.hash} className="latest-comment-card"
-                    onClick={() => c.photo && setModalPhoto(c.photo)}
-                    style={{ cursor: c.photo ? 'pointer' : 'default' }}
-                  >
-                    {c.photo?.thumb
-                      ? (
-                        <img
-                          className="latest-comment-thumb"
-                          src={config.cloudFrontUrl + '/' + c.photo.thumb}
-                          alt=""
-                        />
-                      )
-                      : <div className="latest-comment-no-thumb">📷</div>
-                    }
-                    <div className="latest-comment-body">
-                      <p className="latest-comment-text">"{c.text}"</p>
-                      {c.photo && (
-                        <p className="latest-comment-place">
-                          {[c.photo.city, c.photo.country].filter(Boolean).join(', ')
-                            || c.photo.folder?.split('/').pop() || ''}
-                        </p>
-                      )}
+                {commentItems.map(c => {
+                  const photoIdx = c.photo ? commentPhotos.indexOf(c.photo) : -1;
+                  return (
+                    <div
+                      key={c.hash}
+                      className={'latest-comment-card' + (c.photo ? ' clickable' : '')}
+                      onClick={() => c.photo && photoIdx >= 0 && openModal(commentPhotos, photoIdx)}
+                    >
+                      {c.photo?.thumb
+                        ? (
+                          <img
+                            className="latest-comment-thumb"
+                            src={config.cloudFrontUrl + '/' + c.photo.thumb}
+                            alt=""
+                          />
+                        )
+                        : <div className="latest-comment-no-thumb">📷</div>
+                      }
+                      <div className="latest-comment-body">
+                        <p className="latest-comment-text">"{c.text}"</p>
+                        {c.photo && (
+                          <p className="latest-comment-place">
+                            {[c.photo.city, c.photo.country].filter(Boolean).join(', ')
+                              || c.photo.folder?.split('/').pop() || ''}
+                          </p>
+                        )}
+                      </div>
+                      <span className="latest-item-date latest-comment-date">{fmt(c.updatedAt, months)}</span>
                     </div>
-                    <span className="latest-item-date latest-comment-date">{fmt(c.updatedAt, months)}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )
           }
         </div>
       )}
 
-      {/* Simple photo modal for comment photos */}
-      {modalPhoto && (
-        <div className="modal-overlay" onClick={() => setModalPhoto(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setModalPhoto(null)}>✕</button>
-            {modalPhoto.thumb && (
-              <img
-                className="modal-img"
-                src={config.cloudFrontUrl + '/' + (modalPhoto.s3_key ?? modalPhoto.thumb)}
-                alt=""
-              />
-            )}
-          </div>
-        </div>
+      {/* ── Full-size photo modal ──────────────────────────────────── */}
+      {currentPhoto && (
+        <PhotoModal
+          photo={currentPhoto}
+          onClose={closeModal}
+          onPrev={modalIdx! > 0
+            ? () => setModalIdx(i => i! - 1)
+            : null}
+          onNext={modalIdx! < modalPhotos.length - 1
+            ? () => setModalIdx(i => i! + 1)
+            : null}
+          onAddTag={p  => setAddTagPhoto(p)}
+          onAddComment={p => setCommentPhoto(p)}
+        />
+      )}
+
+      {addTagPhoto && (
+        <AddTagModal
+          onAdd={(tagName, shared) => {
+            ctx.addPhotoToTag(addTagPhoto, tagName, shared);
+            setAddTagPhoto(null);
+          }}
+          onClose={() => setAddTagPhoto(null)}
+        />
+      )}
+
+      {commentPhoto && (
+        <AddCommentModal
+          existing={ctx.getComment(commentPhoto.hash)}
+          onSave={text => { ctx.setComment(commentPhoto.hash, text); setCommentPhoto(null); }}
+          onClose={() => setCommentPhoto(null)}
+        />
       )}
     </div>
   );
