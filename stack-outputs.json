@@ -1,0 +1,10 @@
+{
+  "bucketName": "photo-visor-295936871972",
+  "cloudFrontUrl": "https://fotos.forwardforecasting.eu",
+  "cloudFrontDistributionId": "E2JW5PYKNPPYOB",
+  "userPoolId": "eu-west-1_GeFLGEa2J",
+  "userPoolClientId": "7u1glr8rup47tejh0n9dlrfqas",
+  "identityPoolId": "eu-west-1:8f2feb68-6aba-45df-a996-c3918f9153c7",
+  "exifLambdaName": "photo-visor-exif-processor",
+  "region": "eu-west-1"
+}

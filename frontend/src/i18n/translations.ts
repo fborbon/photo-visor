@@ -1,0 +1,201 @@
+export type Lang = 'en' | 'es';
+
+const t = {
+  en: {
+    // Nav
+    appTitle:    'Photo Visor',
+    tabMap:      'Map',
+    tabTimeline: 'Timeline',
+    signOut:     'Sign out',
+
+    // Map
+    loadingLocations: 'Loading locations…',
+    privateMarker:    'Private',
+    photos:           'photos',
+    loadingPhotos:    'Loading photos…',
+    publicAlbum:      'Public album',
+    privateAlbum:     'Private album',
+    makePublic:       'Make public',
+    makePrivate:      'Make private',
+    noPhotos:         'No photos found for this period.',
+
+    // Timeline
+    yearsHeading:  'Years',
+    selectYearHint:'← Select a year to browse photos',
+    allMonths:     'All',
+    loading:       'Loading…',
+
+    // Months (full names for section headers)
+    months: [
+      '', // index 0 unused
+      'January','February','March','April','May','June',
+      'July','August','September','October','November','December',
+    ],
+    // Short month labels for the nav strip
+    monthsShort: [
+      '',
+      'Jan','Feb','Mar','Apr','May','Jun',
+      'Jul','Aug','Sep','Oct','Nov','Dec',
+    ],
+
+    // Privacy
+    makePhotoPublic:  'Make public',
+    makePhotoPrivate: 'Make private',
+
+    // Tags
+    tabTags:          'Tags',
+    addTag:           'Add Tag',
+    addTagToAlbum:    'Add Tag to Album',
+    myTags:           'My Tags',
+    noTags:           'No tags yet. Right-click a photo or album to add one.',
+    tagName:          'Tag name',
+    createTag:        'Create & Add',
+    cancel:           'Cancel',
+    orSelectExisting: 'Or select existing tag',
+    taggedPhotos:     'photos',
+    taggedAlbums:     'albums',
+    openAlbum:        'Open album',
+    noTaggedPhotos:   'No photos with this tag.',
+    deleteTag:        'Delete tag',
+    removeFromTag:    'Remove from tag',
+    shareTag:         'Share with family',
+    privateTag:       'Private',
+    sharedTag:        'Shared',
+    sharedBy:         'by',
+    familyTags:       'Family Tags',
+
+    // Comments
+    addComment:       'Add Comment',
+    editComment:      'Edit Comment',
+    commentPlaceholder: 'Write a comment…',
+    saveComment:      'Save',
+
+    // Multi-select
+    // Upload
+    tabUpload:        'Upload',
+    tabLatest:        'Latest',
+    latestAdded:      'Added',
+    latestTags:       'Tags',
+    latestComments:   'Comments',
+    noRecentPhotos:   'No recent photos yet.',
+    noRecentTags:     'No tags yet.',
+    noRecentComments: 'No comments yet.',
+    addedOn:          'Added',
+    uploadHint:       'Tap to select photos, or drag & drop here',
+    uploading:        'Uploading…',
+    uploadDone:       'Upload complete',
+    uploadError:      'Upload failed',
+    uploadBtn:        'Upload',
+    uploadCount:      'photos selected',
+    processingHint:   'Photos will appear in the map and timeline shortly.',
+
+    clearList:        'Clear list',
+
+    // Slot machine
+    tabSlots:         'Slot Machine',
+    slotSpin:         '🕹 Pull!',
+    slotSpinning:     'Spinning…',
+    slotHint:         'Press Pull to discover random photos from your collection',
+
+    selected:         'selected',
+    tagSelected:      'Tag all',
+    privateSelected:  'Make private',
+    publicSelected:   'Make public',
+    clearSelection:   'Clear',
+  },
+
+  es: {
+    appTitle:    'Visor de Fotos',
+    tabMap:      'Mapa',
+    tabTimeline: 'Línea de Tiempo',
+    signOut:     'Cerrar sesión',
+
+    loadingLocations: 'Cargando ubicaciones…',
+    privateMarker:    'Privado',
+    photos:           'fotos',
+    loadingPhotos:    'Cargando fotos…',
+    publicAlbum:      'Álbum público',
+    privateAlbum:     'Álbum privado',
+    makePublic:       'Hacer público',
+    makePrivate:      'Hacer privado',
+    noPhotos:         'No se encontraron fotos para este período.',
+
+    yearsHeading:  'Años',
+    selectYearHint:'← Selecciona un año para ver las fotos',
+    allMonths:     'Todas',
+    loading:       'Cargando…',
+
+    months: [
+      '',
+      'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+      'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
+    ],
+    monthsShort: [
+      '',
+      'Ene','Feb','Mar','Abr','May','Jun',
+      'Jul','Ago','Sep','Oct','Nov','Dic',
+    ],
+
+    makePhotoPublic:  'Hacer público',
+    makePhotoPrivate: 'Hacer privado',
+
+    tabTags:          'Etiquetas',
+    addTag:           'Añadir etiqueta',
+    addTagToAlbum:    'Añadir etiqueta al álbum',
+    myTags:           'Mis etiquetas',
+    noTags:           'Sin etiquetas. Haz clic derecho en una foto o álbum para añadir una.',
+    tagName:          'Nombre de etiqueta',
+    createTag:        'Crear y añadir',
+    cancel:           'Cancelar',
+    orSelectExisting: 'O selecciona una etiqueta existente',
+    taggedPhotos:     'fotos',
+    taggedAlbums:     'álbumes',
+    openAlbum:        'Abrir álbum',
+    noTaggedPhotos:   'Sin fotos con esta etiqueta.',
+    deleteTag:        'Eliminar etiqueta',
+    removeFromTag:    'Quitar de la etiqueta',
+    shareTag:         'Compartir con la familia',
+    privateTag:       'Privada',
+    sharedTag:        'Compartida',
+    sharedBy:         'de',
+    familyTags:       'Etiquetas de familia',
+
+    addComment:       'Añadir comentario',
+    editComment:      'Editar comentario',
+    commentPlaceholder: 'Escribe un comentario…',
+    saveComment:      'Guardar',
+
+    tabUpload:        'Subir',
+    tabLatest:        'Recientes',
+    latestAdded:      'Añadidas',
+    latestTags:       'Etiquetas',
+    latestComments:   'Comentarios',
+    noRecentPhotos:   'Aún no hay fotos recientes.',
+    noRecentTags:     'Aún no hay etiquetas.',
+    noRecentComments: 'Aún no hay comentarios.',
+    addedOn:          'Añadida',
+    uploadHint:       'Toca para seleccionar fotos, o arrastra aquí',
+    uploading:        'Subiendo…',
+    uploadDone:       'Subida completada',
+    uploadError:      'Error al subir',
+    uploadBtn:        'Subir',
+    uploadCount:      'fotos seleccionadas',
+    processingHint:   'Las fotos aparecerán en el mapa y la línea de tiempo en breve.',
+
+    clearList:        'Limpiar lista',
+
+    // Tragaperras
+    tabSlots:         'Tragaperras',
+    slotSpin:         '🕹 ¡Tirar!',
+    slotSpinning:     'Girando…',
+    slotHint:         'Pulsa Tirar para descubrir fotos aleatorias de tu colección',
+
+    selected:         'seleccionadas',
+    tagSelected:      'Etiquetar todas',
+    privateSelected:  'Hacer privadas',
+    publicSelected:   'Hacer públicas',
+    clearSelection:   'Limpiar',
+  },
+} as const;
+
+export default t;
