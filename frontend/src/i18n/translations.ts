@@ -95,8 +95,9 @@ const t = {
     tabStats:         'Statistics',
     statsTotal:       'total photos',
     statsNoDate:      'without date',
-    statsCumulative:  'Cumulative photos over time',
-    statsMonthly:     'Photos per month',
+    statsCumulative:       'Cumulative photos over time',
+    statsMonthly:          'Photos per month',
+    statsMonthsWithPhotos: 'months with photos',
 
     // Slot machine
     tabSlots:         'Slot Machine',
@@ -195,8 +196,9 @@ const t = {
     tabStats:         'Estadísticas',
     statsTotal:       'fotos en total',
     statsNoDate:      'sin fecha',
-    statsCumulative:  'Fotos acumuladas a lo largo del tiempo',
-    statsMonthly:     'Fotos por mes',
+    statsCumulative:       'Fotos acumuladas a lo largo del tiempo',
+    statsMonthly:          'Fotos por mes',
+    statsMonthsWithPhotos: 'meses con fotos',
 
     // Tragaperras
     tabSlots:         'Tragaperras',

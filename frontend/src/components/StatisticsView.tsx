@@ -103,21 +103,20 @@ function CumulativeChart({ byMonth }: { byMonth: MonthStat[] }) {
 
 // ── Monthly bar chart ──────────────────────────────────────────────────────
 function MonthlyBarChart({ byMonth }: { byMonth: MonthStat[] }) {
-  const ref  = useRef<HTMLDivElement>(null);
-  const cw   = useContainerWidth(ref);
-  const H    = 260;
-  const IH   = H - MT - MB;
+  const ref = useRef<HTMLDivElement>(null);
+  const cw  = useContainerWidth(ref);
+  const H   = 260;
+  const IH  = H - MT - MB;
+  const IW  = Math.max(1, cw - ML - MR);
 
-  const maxV   = Math.max(...byMonth.map(d => d.count), 1);
-  const n      = byMonth.length;
-  const barW   = Math.max(3, Math.min(18, Math.floor((cw - ML - MR) / n) - 1));
-  const svgW   = Math.max(cw, ML + MR + n * (barW + 1));
-  const IW     = svgW - ML - MR;
-  const slot   = IW / n;
+  const n    = byMonth.length;
+  // Fit all bars in the available width — no horizontal scroll
+  const slot = IW / n;
+  const barW = Math.max(1, slot - Math.min(1, slot * 0.15));
 
+  const maxV = Math.max(...byMonth.map(d => d.count), 1);
   const yTicks = [0, .25, .5, .75, 1].map(f => ({ v: Math.round(maxV * f), y: IH - IH * f }));
 
-  // Year label positions (first month of each year)
   const yearMarks: { label: string; x: number }[] = [];
   byMonth.forEach((d, i) => {
     if (d.ym.slice(5) === '01') {
@@ -128,8 +127,8 @@ function MonthlyBarChart({ byMonth }: { byMonth: MonthStat[] }) {
 
   return (
     <div ref={ref} style={{ width: '100%' }}>
-      <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
-        <svg width={svgW} height={H} style={{ display: 'block' }}>
+      {cw > 0 && (
+        <svg width={cw} height={H} style={{ display: 'block' }}>
           <g transform={`translate(${ML},${MT})`}>
             {/* Grid */}
             {yTicks.map(t => (
@@ -138,14 +137,13 @@ function MonthlyBarChart({ byMonth }: { byMonth: MonthStat[] }) {
             ))}
             {/* Bars */}
             {byMonth.map((d, i) => {
-              const bh = Math.max(1, (d.count / maxV) * IH);
-              const x  = i * slot + (slot - barW) / 2;
-              // Highlight January bars slightly
+              const bh  = Math.max(1, (d.count / maxV) * IH);
+              const x   = i * slot + (slot - barW) / 2;
               const isJan = d.ym.slice(5) === '01';
               return (
                 <rect key={d.ym}
-                  x={x.toFixed(1)} y={(IH - bh).toFixed(1)}
-                  width={barW} height={bh.toFixed(1)}
+                  x={x.toFixed(2)} y={(IH - bh).toFixed(1)}
+                  width={barW.toFixed(2)} height={bh.toFixed(1)}
                   fill={isJan ? '#ff0084' : '#cc006a'}
                   opacity={0.85} rx={barW > 6 ? 2 : 0}
                 />
@@ -159,7 +157,7 @@ function MonthlyBarChart({ byMonth }: { byMonth: MonthStat[] }) {
                 <text y={18} textAnchor="middle" fill="#686868" fontSize={11}>{t.label}</text>
               </g>
             ))}
-            {/* Y axis (sticky left) */}
+            {/* Y axis */}
             <line x1={0} y1={0} x2={0} y2={IH} stroke="#2e2e2e" />
             {yTicks.map(t => (
               <g key={t.v} transform={`translate(0,${t.y.toFixed(1)})`}>
@@ -171,7 +169,7 @@ function MonthlyBarChart({ byMonth }: { byMonth: MonthStat[] }) {
             ))}
           </g>
         </svg>
-      </div>
+      )}
     </div>
   );
 }
@@ -199,7 +197,7 @@ export default function StatisticsView() {
             </div>
             <div className="stats-kpi secondary">
               <span className="stats-kpi-num">{stats.by_month.length}</span>
-              <span className="stats-kpi-label">meses con fotos</span>
+              <span className="stats-kpi-label">{tr.statsMonthsWithPhotos}</span>
             </div>
           </div>
 
