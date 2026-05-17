@@ -9,10 +9,23 @@ A personal family photo viewer hosted on AWS — exploring 190 000+ photos acros
 1. [Overview](#1-overview)
 2. [Architecture](#2-architecture)
 3. [Data Processing Pipeline](#3-data-processing-pipeline)
+   - 3.1 [Bulk Ingest](#31-bulk-ingest-scriptsbulk-ingestpy)
+   - 3.2 [Lambda EXIF Processor](#32-lambda-exif-processor-lambdasexif-processor)
+   - 3.3 [Photo Identity](#33-photo-identity)
+   - 3.4 [Datetime Recovery](#34-datetime-recovery)
+   - 3.5 [Geocoding](#35-geocoding)
 4. [Libraries & Dependencies](#4-libraries--dependencies)
 5. [Technologies NOT Used (and Why)](#5-technologies-not-used-and-why)
 6. [Data Flow Diagram](#6-data-flow-diagram)
+   - 6.1 [High-Level Architecture Flow](#61-high-level-architecture-flow-not-shown-above)
+   - 6.2 [Function-Level Call Graph](#62-function-level-call-graph)
 7. [AWS Cost Estimation](#7-aws-cost-estimation)
+   - 7.1 [Storage](#71-storage)
+   - 7.2 [Processing & Requests](#72-processing--requests)
+   - 7.3 [Connectivity](#73-connectivity)
+   - 7.4 [Auth & Infrastructure](#74-auth--infrastructure)
+   - 7.5 [AI Services](#75-ai-services)
+   - 7.6 [Monthly & Annual Summary](#76-monthly--annual-summary)
 8. [Setup & Deployment](#8-setup--deployment)
 
 ---
@@ -237,6 +250,8 @@ The project was *developed* using Claude Code (Anthropic's AI coding assistant),
 
 ## 6. Data Flow Diagram
 
+### 6.1 High-Level Architecture Flow
+
 ```mermaid
 flowchart TD
     A["/mnt/sda2/Personal/Fotos\n194 754 files · 475 GB"] --> B
@@ -295,6 +310,49 @@ flowchart TD
     UP -->|"PutObject"| P
 ```
 
+### 6.2 Function-Level Call Graph
+
+Shows the actual Python functions and their call relationships in both the local ingest script and the Lambda.
+
+```mermaid
+flowchart TD
+    subgraph INGEST["bulk-ingest.py — function call graph"]
+        RUN["run(args)\norchestrator · parses CLI args"]
+        RUN --> ODB["open_db()\nSQLite: create schema + return connection"]
+        RUN --> SL["scan_local(root, db)\nrglob all media files\ncompare mtime_ns + size to SQLite cache"]
+        SL -->|"8 ThreadPoolExecutor workers"| PP["process_photo(args)\nper-file worker function"]
+        PP --> QH["quick_hash(path, size)\nSHA-256 of size ‖ head 64 KB ‖ tail 64 KB\n~400× faster than full-file hash"]
+        PP --> EX["extract_exif(path)\nexifread → GPS rational values\nDateTimeOriginal / Orientation"]
+        EX -->|"no EXIF date"| PFD["parse_filename_date(fname)\nregex: Android · WhatsApp IMG/VID\nScreenshot · generic YYYYMMDD"]
+        PP --> CP["classify_path(rel_path)\ncontinent bucket → country → city tokens\nSpanish→English country normalisation"]
+        CP --> GEO["geocode(db, city, country)\nNominatim forward geocode\nSQLite cache · 1.1 s rate-limit delay"]
+        PP --> GT["generate_thumbnail(path)\nPillow · ImageOps.exif_transpose\nLANCZOS resize to 400 px wide\nJPEG quality 72"]
+        PP --> UPH["upload_photo(s3, path, hash, dry_run)\nboto3 PutObject\n→ photos/{ab}/{hash}.ext\nStorageClass: GLACIER_IR"]
+        PP --> UPT["upload_thumbnail(s3, thumb, hash, dry_run)\nboto3 PutObject\n→ thumbs/{ab}/{hash}.jpg\nStorageClass: STANDARD"]
+        RUN --> BUI["build_and_upload_index(db, s3, dry_run)\nread all status=active rows from SQLite\nbuild JSON structures\n→ _put_index() for each file"]
+        BUI --> IDX1["index/time/{year}.json\nPhotoEntry[] sorted by dt"]
+        BUI --> IDX2["index/geo/{Country_City}.json\nper-location photo arrays"]
+        BUI --> IDX3["index/summary.json\ntotals · years · locations list"]
+        BUI --> IDX4["index/recent.json\nlast 100 by ingested_at"]
+    end
+
+    UPH -->|"S3 ObjectCreated event\n(web-uploaded photos only)"| TRIG
+
+    subgraph LAMBDA["exif-processor/index.py — function call graph"]
+        TRIG["handler(event, context)\nS3 trigger entry point\niterates over event Records"]
+        TRIG --> PROC["_process(key)\ndownloads photo bytes from S3\nmain per-upload orchestrator"]
+        PROC --> LEX["extract_exif(data: bytes)\nexifread on raw S3 bytes\nGPS rational → decimal · DateTimeOriginal"]
+        PROC -->|"no EXIF date"| LFD["filename_date(name)\n3-pattern regex fallback\nYYYYMMDD_HHMMSS · YYYY-MM-DD · YYYYMMDD"]
+        PROC --> LRG["reverse_geocode(lat, lng)\nNominatim reverse API\nurllib.request · zoom=10 · 1.1 s delay"]
+        PROC --> LMT["make_thumbnail(data, ext)\nPillow LANCZOS → 400 px wide\nJPEG quality 72 · skip RAW formats"]
+        PROC --> LRJ["_read_json(key)\nS3 GetObject + json.loads\nreturns [] or {} on missing key"]
+        LRJ --> LWJ["_write_json(key, data)\nS3 PutObject + json.dumps\nCacheControl: max-age=3600"]
+        LWJ --> LIDX1["index/time/{year}.json\nappend entry · sort by dt"]
+        LWJ --> LIDX2["index/geo/{loc_key}.json\nappend entry if new hash"]
+        LWJ --> LIDX3["index/summary.json\npatch total count · years set · locations list"]
+    end
+```
+
 ---
 
 ## 7. AWS Cost Estimation
@@ -302,31 +360,73 @@ flowchart TD
 Based on actual usage: **194 754 photos · 475 GB originals · ~20 GB thumbnails · ~0.1 GB indexes**.  
 Assumes a family of ~5 users browsing occasionally (~10 GB CloudFront egress/month).
 
-### Monthly Cost Breakdown
+### 7.1 Storage
 
-| Service | Resource | Unit price | Quantity | Monthly cost |
+| Service | Resource | Unit price | Quantity | Monthly |
 |---|---|---|---|---|
-| **S3 Glacier Instant** | Originals storage | $0.004 / GB | 475 GB | **$1.90** |
-| **S3 Standard** | Thumbnails storage | $0.023 / GB | 20 GB | **$0.46** |
-| **S3 Standard** | Index files storage | $0.023 / GB | 0.1 GB | **$0.00** |
-| **S3 Glacier Instant** | Retrieval requests | $0.01 / 1000 GET | ~5 000/month | **$0.05** |
-| **S3 Standard** | PUT requests (ingest) | $0.005 / 1000 | ~200 000 one-time | **$1.00** *(one-time)* |
-| **CloudFront** | Egress to internet | First 1 TB free | ~10 GB/month | **$0.00** |
-| **CloudFront** | HTTPS requests | First 10M free | ~100K/month | **$0.00** |
-| **Cognito** | Monthly active users | First 50K free | ~5 users | **$0.00** |
-| **Lambda** | EXIF processor | First 1M req free | ~100/month | **$0.00** |
-| **ACM** | TLS certificate | Free with CloudFront | 1 | **$0.00** |
-| **Route 53** | DNS hosted zone | $0.50 / zone | 0 *(CNAME at registrar)* | **$0.00** |
-| | | | **Total/month** | **≈ $2.40** |
+| S3 Glacier Instant Retrieval | Photo originals | $0.004 / GB | 475 GB | **$1.90** |
+| S3 Standard | Thumbnails (400 px JPEG) | $0.023 / GB | 20 GB | **$0.46** |
+| S3 Standard | Index JSON + app bundle | $0.023 / GB | ~0.5 GB | **$0.01** |
+| | | | **Storage subtotal** | **≈ $2.37 / month** |
 
-### Yearly Cost
+### 7.2 Processing & Requests
 
-| | Cost |
+| Service | Resource | Unit price | Quantity | Monthly |
+|---|---|---|---|---|
+| Lambda | EXIF processor invocations | First 1 M req free | ~100 / month | **$0.00** |
+| Lambda | Compute (128 MB · ~3 s / call) | Free tier covers it | ~100 / month | **$0.00** |
+| S3 Glacier IR | GET / retrieval requests | $0.01 / 1 000 GETs | ~5 000 / month | **$0.05** |
+| S3 Standard | PUT requests *(ingest, one-time)* | $0.005 / 1 000 | ~200 000 total | **$1.00** *(one-time)* |
+| | | | **Processing subtotal** | **≈ $0.05 / month** |
+
+### 7.3 Connectivity
+
+| Service | Resource | Unit price | Quantity | Monthly |
+|---|---|---|---|---|
+| CloudFront | Data transfer to internet | First 1 TB / month free | ~10 GB | **$0.00** |
+| CloudFront | HTTPS requests | First 10 M / month free | ~100 K | **$0.00** |
+| Nominatim (OSM) | Geocoding API calls | Free (fair-use) | ~1 000 one-time | **$0.00** |
+| | | | **Connectivity subtotal** | **$0.00 / month** |
+
+### 7.4 Auth & Infrastructure
+
+| Service | Resource | Unit price | Quantity | Monthly |
+|---|---|---|---|---|
+| Cognito | Monthly active users | First 50 K free | ~5 users | **$0.00** |
+| ACM | TLS certificate | Free with CloudFront | 1 cert | **$0.00** |
+| Route 53 | DNS hosted zone | $0.50 / zone | 0 *(CNAME at registrar)* | **$0.00** |
+| | | | **Auth subtotal** | **$0.00 / month** |
+
+### 7.5 AI Services
+
+This application uses **no AI services in production**. All geocoding is done via the free Nominatim (OpenStreetMap) API; all image processing is deterministic (Pillow). No LLM, no image classifier, no diffusion model, no chatbot, no RAG pipeline.
+
+| Service | Usage | Monthly cost |
+|---|---|---|
+| Any LLM / GenAI in production | — | **$0.00** |
+| Any image classification / diffusion | — | **$0.00** |
+| Nominatim geocoding (OSM, free) | ~1 000 calls one-time during ingest | **$0.00** |
+| **Anthropic Claude Code** *(development only)* | ~15–20 h of coding sessions | **$0.00 ongoing** |
+
+One-time development cost using Claude Code (Claude Sonnet, billed per token): approximately **$30–60**.
+
+### 7.6 Monthly & Annual Summary
+
+| Category | Monthly | Annual |
+|---|---|---|
+| Storage | $2.37 | $28.44 |
+| Processing & Requests | $0.05 | $0.60 |
+| Connectivity | $0.00 | $0.00 |
+| Auth & Infrastructure | $0.00 | $0.00 |
+| AI Services | $0.00 | $0.00 |
+| **Total ongoing** | **≈ $2.42** | **≈ $29.04** |
+
+| One-time costs | Amount |
 |---|---|
-| Recurring (storage + retrieval) | **~$28 / year** |
-| One-time ingest S3 PUT requests | **~$1** |
-| **Total first year** | **~$29** |
-| **Subsequent years** | **~$28 / year** |
+| S3 PUT requests for initial ingest (~200 K files) | ~$1.00 |
+| Development with Claude Code (Anthropic) | ~$30–60 |
+| **Total first-year cost** | **~$60–90** |
+| **Subsequent years** | **~$29 / year** |
 
 ### Cost Scaling
 
@@ -334,14 +434,8 @@ Assumes a family of ~5 users browsing occasionally (~10 GB CloudFront egress/mon
 |---|---|
 | +100 GB new photos added | +$0.40 / month |
 | Heavy browsing (100 GB CloudFront egress) | +$7.65 / month |
-| 50 users (Cognito still free tier) | +$0.00 |
-
-### Anthropic (Development Cost)
-
-The application was developed using **Claude Code** (Anthropic's AI coding assistant). There is **no ongoing Anthropic API cost** in production — the app contains no AI components.
-
-Estimated development sessions: ~15–20 hours of Claude Code usage.  
-Approximate one-time development cost: **$30–60** (Claude Sonnet API pricing, billed per token).
+| 50 active users (Cognito still free tier) | +$0.00 |
+| Adding an LLM feature (e.g., photo captioning) | +variable (API tokens) |
 
 ---
 
