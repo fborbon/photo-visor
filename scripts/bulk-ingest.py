@@ -771,8 +771,38 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
     } for r in recent_rows]
     _put_index(s3, "index/recent.json", {"updated": datetime.now().isoformat(), "photos": recent_photos}, dry_run)
 
+    # ── index/stats.json — aggregated statistics for the Statistics tab ────────
+    stats_rows = db.execute("""
+        SELECT strftime('%Y-%m', datetime_taken) AS ym,
+               COUNT(*) AS cnt
+        FROM   photos
+        WHERE  status = 'active'
+          AND  s3_uploaded = 1
+          AND  datetime_taken IS NOT NULL
+          AND  datetime_taken != ''
+        GROUP  BY ym
+        ORDER  BY ym
+    """).fetchall()
+    by_month = [{"ym": r["ym"], "count": r["cnt"]} for r in stats_rows if r["ym"]]
+
+    total_active = db.execute(
+        "SELECT COUNT(*) FROM photos WHERE status='active' AND s3_uploaded=1"
+    ).fetchone()[0]
+    no_date = db.execute(
+        "SELECT COUNT(*) FROM photos WHERE status='active' AND s3_uploaded=1"
+        " AND (datetime_taken IS NULL OR datetime_taken = '')"
+    ).fetchone()[0]
+
+    _put_index(s3, "index/stats.json", {
+        "generated": datetime.now().isoformat(),
+        "total":     total_active,
+        "no_date":   no_date,
+        "by_month":  by_month,
+    }, dry_run)
+
     log.info(f"Index: {len(by_year)} year files, {len(by_location)} location files, "
-             f"{len(by_folder)} general files, {len(recent_photos)} recent")
+             f"{len(by_folder)} general files, {len(recent_photos)} recent, "
+             f"{len(by_month)} monthly stats")
 
 
 def _put_index(s3, key: str, data, dry_run: bool):

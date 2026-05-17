@@ -91,6 +91,13 @@ const t = {
 
     clearList:        'Clear list',
 
+    // Statistics
+    tabStats:         'Statistics',
+    statsTotal:       'total photos',
+    statsNoDate:      'without date',
+    statsCumulative:  'Cumulative photos over time',
+    statsMonthly:     'Photos per month',
+
     // Slot machine
     tabSlots:         'Slot Machine',
     slotSpin:         '🕹 Pull!',
@@ -183,6 +190,13 @@ const t = {
     processingHint:   'Las fotos aparecerán en el mapa y la línea de tiempo en breve.',
 
     clearList:        'Limpiar lista',
+
+    // Estadísticas
+    tabStats:         'Estadísticas',
+    statsTotal:       'fotos en total',
+    statsNoDate:      'sin fecha',
+    statsCumulative:  'Fotos acumuladas a lo largo del tiempo',
+    statsMonthly:     'Fotos por mes',
 
     // Tragaperras
     tabSlots:         'Tragaperras',

@@ -31,7 +31,15 @@ export interface Summary {
   general_folders: string[];
 }
 
-export type Tab = 'map' | 'timeline' | 'tags' | 'upload' | 'latest' | 'slots';
+export type Tab = 'map' | 'timeline' | 'tags' | 'upload' | 'latest' | 'slots' | 'stats';
+
+export interface MonthStat { ym: string; count: number; }
+export interface StatsIndex {
+  generated: string;
+  total:     number;
+  no_date:   number;
+  by_month:  MonthStat[];
+}
 
 export interface AlbumRef {
   key:   string;   // e.g. "Spain_Barcelona"

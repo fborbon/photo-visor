@@ -11,6 +11,7 @@ import TagsView     from './components/TagsView';
 import UploadView   from './components/UploadView';
 import LatestView        from './components/LatestView';
 import SlotMachineView  from './components/SlotMachineView';
+import StatisticsView   from './components/StatisticsView';
 
 function Shell() {
   const [tab, setTab] = useState<Tab>('map');
@@ -58,6 +59,12 @@ function Shell() {
               >
                 🎰 {tr.tabSlots}
               </button>
+              <button
+                className={'tab-btn' + (tab === 'stats'   ? ' active' : '')}
+                onClick={() => setTab('stats')}
+              >
+                📊 {tr.tabStats}
+              </button>
               {isOwner && (
                 <button
                   className={'tab-btn' + (tab === 'upload' ? ' active' : '')}
@@ -84,6 +91,7 @@ function Shell() {
               {tab === 'tags'     && <TagsView />}
               {tab === 'latest'   && <LatestView />}
               {tab === 'slots'    && <SlotMachineView />}
+              {tab === 'stats'    && <StatisticsView />}
               {tab === 'upload'   && <UploadView />}
             </TagsProvider>
           </main>
