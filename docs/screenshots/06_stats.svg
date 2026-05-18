@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
+  <rect width="1200" height="720" fill="#0f172a"/>
+
+  <rect x="0" y="0" width="1200" height="52" fill="#1e293b"/>
+  <rect x="0" y="52" width="1200" height="1" fill="#334155"/>
+  <text x="18" y="34" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="20" font-weight="700" fill="#ff0084">foto</text>
+  <text x="60" y="34" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="20" font-weight="700" fill="#f1f5f9">visor</text>
+  <text x="120" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Map</text>
+  <text x="166" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Timeline</text>
+  <text x="252" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Tags</text>
+  <text x="306" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Latest</text>
+  <text x="376" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Slots</text>
+  <text x="438" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#ff0084" font-weight="600">Stats</text>
+  <rect x="438" y="49" width="40" height="3" fill="#ff0084" rx="1"/>
+  <text x="500" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Upload</text>
+  <text x="950" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12.5" fill="#94a3b8">EN / ES</text>
+  <text x="1000" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12.5" fill="#94a3b8">john.doe@example.com</text>
+  <rect x="1158" y="14" width="30" height="22" rx="4" fill="#334155"/>
+  <text x="1163" y="29" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11" fill="#94a3b8">Exit</text>
+
+<rect x="20" y="67" width="176" height="76" rx="8" fill="#243044" stroke="#334155" stroke-width="1"/><text x="34" y="97" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="22" fill="#ff0084" font-weight="700">194 754</text><text x="34" y="119" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12" fill="#94a3b8">Total Photos</text>
+<rect x="212" y="67" width="176" height="76" rx="8" fill="#243044" stroke="#334155" stroke-width="1"/><text x="226" y="97" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="22" fill="#ff0084" font-weight="700">475 GB</text><text x="226" y="119" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12" fill="#94a3b8">Storage Used</text>
+<rect x="404" y="67" width="176" height="76" rx="8" fill="#243044" stroke="#334155" stroke-width="1"/><text x="418" y="97" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="22" fill="#ff0084" font-weight="700">47</text><text x="418" y="119" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12" fill="#94a3b8">Countries</text>
+<rect x="596" y="67" width="176" height="76" rx="8" fill="#243044" stroke="#334155" stroke-width="1"/><text x="610" y="97" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="22" fill="#ff0084" font-weight="700">~$2.42</text><text x="610" y="119" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12" fill="#94a3b8">Monthly Cost</text>
+<rect x="788" y="67" width="176" height="76" rx="8" fill="#243044" stroke="#334155" stroke-width="1"/><text x="802" y="97" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="22" fill="#ff0084" font-weight="700">10 years</text><text x="802" y="119" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12" fill="#94a3b8">Time Covered</text>
+<rect x="980" y="67" width="176" height="76" rx="8" fill="#243044" stroke="#334155" stroke-width="1"/><text x="994" y="97" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="22" fill="#ff0084" font-weight="700">312</text><text x="994" y="119" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12" fill="#94a3b8">Cities</text>
+<rect x="20" y="167" width="540" height="260" rx="8" fill="#243044" stroke="#334155" stroke-width="1"/><text x="34" y="191" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13" fill="#f1f5f9" font-weight="600">Photos per Year</text>
+<rect x="60" y="396" width="42" height="7" rx="3" fill="#ff0084" opacity="0.8"/><text x="81" y="418" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="10" fill="#64748b">2015</text>
+<rect x="108" y="383" width="42" height="20" rx="3" fill="#ff0084" opacity="0.8"/><text x="129" y="418" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="10" fill="#64748b">2016</text>
+<rect x="156" y="352" width="42" height="51" rx="3" fill="#ff0084" opacity="0.8"/><text x="177" y="418" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="10" fill="#64748b">2017</text>
+<rect x="204" y="332" width="42" height="71" rx="3" fill="#ff0084" opacity="0.8"/><text x="225" y="418" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="10" fill="#64748b">2018</text>
+<rect x="252" y="294" width="42" height="109" rx="3" fill="#ff0084" opacity="0.8"/><text x="273" y="418" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="10" fill="#64748b">2019</text>
+<rect x="300" y="274" width="42" height="129" rx="3" fill="#ff0084" opacity="0.8"/><text x="321" y="418" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="10" fill="#64748b">2020</text>
+<rect x="348" y="223" width="42" height="180" rx="3" fill="#ff0084" opacity="0.8"/><text x="369" y="418" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="10" fill="#64748b">2021</text>
+<rect x="396" y="237" width="42" height="166" rx="3" fill="#ff0084" opacity="0.8"/><text x="417" y="418" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="10" fill="#64748b">2022</text>
+<rect x="444" y="203" width="42" height="200" rx="3" fill="#ff0084" opacity="0.8"/><text x="465" y="418" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="10" fill="#64748b">2023</text>
+<rect x="492" y="217" width="42" height="186" rx="3" fill="#ff0084" opacity="0.8"/><text x="513" y="418" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="10" fill="#64748b">2024</text>
+<rect x="580" y="167" width="600" height="260" rx="8" fill="#243044" stroke="#334155" stroke-width="1"/><text x="594" y="191" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13" fill="#f1f5f9" font-weight="600">Top Countries</text>
+<path d="M850,307 L850.0,227.0 A80,80 0 0,1 914.7,354.0 Z" fill="#ff0084" opacity="0.85"/>
+<path d="M850,307 L914.7,354.0 A80,80 0 0,1 815.9,379.4 Z" fill="#3b82f6" opacity="0.85"/>
+<path d="M850,307 L815.9,379.4 A80,80 0 0,1 775.6,336.4 Z" fill="#10b981" opacity="0.85"/>
+<path d="M850,307 L775.6,336.4 A80,80 0 0,1 772.5,287.1 Z" fill="#f97316" opacity="0.85"/>
+<path d="M850,307 L772.5,287.1 A80,80 0 0,1 791.7,252.2 Z" fill="#8b5cf6" opacity="0.85"/>
+<path d="M850,307 L791.7,252.2 A80,80 0 0,1 850.0,227.0 Z" fill="#64748b" opacity="0.85"/>
+<rect x="946" y="213" width="12" height="12" rx="3" fill="#ff0084"/><text x="964" y="224" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11.5" fill="#f1f5f9">Spain (35%)</text>
+<rect x="946" y="241" width="12" height="12" rx="3" fill="#3b82f6"/><text x="964" y="252" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11.5" fill="#f1f5f9">Colombia (22%)</text>
+<rect x="946" y="269" width="12" height="12" rx="3" fill="#10b981"/><text x="964" y="280" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11.5" fill="#f1f5f9">France (12%)</text>
+<rect x="946" y="297" width="12" height="12" rx="3" fill="#f97316"/><text x="964" y="308" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11.5" fill="#f1f5f9">USA (10%)</text>
+<rect x="946" y="325" width="12" height="12" rx="3" fill="#8b5cf6"/><text x="964" y="336" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11.5" fill="#f1f5f9">Italy (8%)</text>
+<rect x="946" y="353" width="12" height="12" rx="3" fill="#64748b"/><text x="964" y="364" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11.5" fill="#f1f5f9">Other (13%)</text>
+</svg>

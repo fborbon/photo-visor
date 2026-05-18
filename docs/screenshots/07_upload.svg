@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
+  <rect width="1200" height="720" fill="#0f172a"/>
+
+  <rect x="0" y="0" width="1200" height="52" fill="#1e293b"/>
+  <rect x="0" y="52" width="1200" height="1" fill="#334155"/>
+  <text x="18" y="34" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="20" font-weight="700" fill="#ff0084">foto</text>
+  <text x="60" y="34" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="20" font-weight="700" fill="#f1f5f9">visor</text>
+  <text x="120" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Map</text>
+  <text x="166" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Timeline</text>
+  <text x="252" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Tags</text>
+  <text x="306" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Latest</text>
+  <text x="376" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Slots</text>
+  <text x="438" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#94a3b8" font-weight="400">Stats</text>
+  <text x="500" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13.5" fill="#ff0084" font-weight="600">Upload</text>
+  <rect x="500" y="49" width="48" height="3" fill="#ff0084" rx="1"/>
+  <text x="950" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12.5" fill="#94a3b8">EN / ES</text>
+  <text x="1000" y="32" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12.5" fill="#94a3b8">john.doe@example.com</text>
+  <rect x="1158" y="14" width="30" height="22" rx="4" fill="#334155"/>
+  <text x="1163" y="29" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11" fill="#94a3b8">Exit</text>
+
+<rect x="300" y="83" width="600" height="200" rx="12" fill="#243044" stroke="#ff0084" stroke-width="2" stroke-dasharray="8,5"/><!-- upload icon (arrow up) --><text x="600" y="163" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="44" fill="#ff0084" opacity="0.7">↑</text><text x="600" y="201" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="16" fill="#f1f5f9" font-weight="600">Drop photos here</text><text x="600" y="223" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13" fill="#94a3b8">or click to select files</text><text x="600" y="245" text-anchor="middle" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11" fill="#64748b">JPEG · HEIC · PNG · MP4 · MOV</text>
+<text x="300" y="307" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="13" fill="#f1f5f9" font-weight="600">Upload queue — 5 files</text>
+<rect x="300" y="323" width="600" height="44" rx="6" fill="#243044" stroke="#334155" stroke-width="1"/>
+<clipPath id="clip_306_327"><rect x="306" y="327" width="56" height="36" rx="4"/></clipPath><rect x="306" y="327" width="56" height="36" rx="4" fill="#3b82f6"/><polygon points="306.0,363.0 311.6,363.0 322.8,342.1 334.0,346.8 344.1,338.5 353.6,345.0 362.0,363.0" fill="#1e3a5f" clip-path="url(#clip_306_327)"/><rect x="306" y="355.8" width="56" height="7.2" fill="#166534" clip-path="url(#clip_306_327)"/><circle cx="349.7" cy="334.9" r="3.6" fill="rgba(255,230,80,0.75)" clip-path="url(#clip_306_327)"/>
+<text x="372" y="341" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12" fill="#f1f5f9">IMG_2024_08_14_001.jpg</text><text x="372" y="356" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11" fill="#64748b">3.2 MB</text>
+<rect x="372" y="361" width="520" height="4" rx="2" fill="#334155"/><rect x="372" y="361" width="520" height="4" rx="2" fill="#10b981"/>
+<text x="894" y="343" text-anchor="end" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="18" fill="#10b981">✓</text>
+<rect x="300" y="375" width="600" height="44" rx="6" fill="#243044" stroke="#334155" stroke-width="1"/>
+<clipPath id="clip_306_379"><rect x="306" y="379" width="56" height="36" rx="4"/></clipPath><rect x="306" y="379" width="56" height="36" rx="4" fill="#f97316"/><polygon points="306.0,415.0 311.6,415.0 322.8,394.1 334.0,398.8 344.1,390.5 353.6,397.0 362.0,415.0" fill="#92400e" clip-path="url(#clip_306_379)"/><rect x="306" y="407.8" width="56" height="7.2" fill="#78350f" clip-path="url(#clip_306_379)"/><circle cx="349.7" cy="386.9" r="3.6" fill="rgba(255,230,80,0.75)" clip-path="url(#clip_306_379)"/>
+<text x="372" y="393" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12" fill="#f1f5f9">IMG_2024_08_14_002.jpg</text><text x="372" y="408" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11" fill="#64748b">2.8 MB</text>
+<rect x="372" y="413" width="520" height="4" rx="2" fill="#334155"/><rect x="372" y="413" width="520" height="4" rx="2" fill="#10b981"/>
+<text x="894" y="395" text-anchor="end" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="18" fill="#10b981">✓</text>
+<rect x="300" y="427" width="600" height="44" rx="6" fill="#243044" stroke="#334155" stroke-width="1"/>
+<clipPath id="clip_306_431"><rect x="306" y="431" width="56" height="36" rx="4"/></clipPath><rect x="306" y="431" width="56" height="36" rx="4" fill="#10b981"/><polygon points="306.0,467.0 311.6,467.0 322.8,446.1 334.0,450.8 344.1,442.5 353.6,449.0 362.0,467.0" fill="#065f46" clip-path="url(#clip_306_431)"/><rect x="306" y="459.8" width="56" height="7.2" fill="#064e3b" clip-path="url(#clip_306_431)"/><circle cx="349.7" cy="438.9" r="3.6" fill="rgba(255,230,80,0.75)" clip-path="url(#clip_306_431)"/>
+<text x="372" y="445" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12" fill="#f1f5f9">IMG_2024_08_14_003.heic</text><text x="372" y="460" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11" fill="#64748b">4.1 MB</text>
+<rect x="372" y="465" width="520" height="4" rx="2" fill="#334155"/><rect x="372" y="465" width="348" height="4" rx="2" fill="#ff0084"/>
+<rect x="300" y="479" width="600" height="44" rx="6" fill="#243044" stroke="#334155" stroke-width="1"/>
+<clipPath id="clip_306_483"><rect x="306" y="483" width="56" height="36" rx="4"/></clipPath><rect x="306" y="483" width="56" height="36" rx="4" fill="#1e1b4b"/><polygon points="306.0,519.0 311.6,519.0 322.8,498.1 334.0,502.8 344.1,494.5 353.6,501.0 362.0,519.0" fill="#4338ca" clip-path="url(#clip_306_483)"/><rect x="306" y="511.8" width="56" height="7.2" fill="#1e3a5f" clip-path="url(#clip_306_483)"/><circle cx="349.7" cy="490.9" r="3.6" fill="rgba(255,230,80,0.75)" clip-path="url(#clip_306_483)"/>
+<text x="372" y="497" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12" fill="#f1f5f9">VID_2024_08_14_001.mp4</text><text x="372" y="512" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11" fill="#64748b">18.4 MB</text>
+<rect x="372" y="517" width="520" height="4" rx="2" fill="#334155"/><rect x="372" y="517" width="171" height="4" rx="2" fill="#3b82f6"/>
+<rect x="300" y="531" width="600" height="44" rx="6" fill="#243044" stroke="#334155" stroke-width="1"/>
+<clipPath id="clip_306_535"><rect x="306" y="535" width="56" height="36" rx="4"/></clipPath><rect x="306" y="535" width="56" height="36" rx="4" fill="#fcd34d"/><polygon points="306.0,571.0 311.6,571.0 322.8,550.1 334.0,554.8 344.1,546.5 353.6,553.0 362.0,571.0" fill="#b45309" clip-path="url(#clip_306_535)"/><rect x="306" y="563.8" width="56" height="7.2" fill="#92400e" clip-path="url(#clip_306_535)"/><circle cx="349.7" cy="542.9" r="3.6" fill="rgba(255,230,80,0.75)" clip-path="url(#clip_306_535)"/>
+<text x="372" y="549" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="12" fill="#f1f5f9">IMG_2024_08_14_004.jpg</text><text x="372" y="564" font-family="system-ui, -apple-system, Arial, sans-serif" font-size="11" fill="#64748b">2.3 MB</text>
+<rect x="372" y="569" width="520" height="4" rx="2" fill="#334155"/><rect x="372" y="569" width="0" height="4" rx="2" fill="#334155"/>
+</svg>
