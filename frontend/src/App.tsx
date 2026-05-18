@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Authenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
-import { Tab } from './types';
+import { Tab, Summary } from './types';
 import { LangProvider, useLang }    from './context/LangContext';
 import { PrivacyProvider, usePrivacy } from './context/PrivacyContext';
 import { TagsProvider }             from './context/TagsContext';
+import { useIndex }     from './hooks/useIndex';
 import MapView      from './components/MapView';
 import TimelineView from './components/TimelineView';
 import TagsView     from './components/TagsView';
@@ -17,6 +18,7 @@ function Shell() {
   const [tab, setTab] = useState<Tab>('map');
   const { lang, toggle, tr } = useLang();
   const { isOwner } = usePrivacy();
+  const { data: summary } = useIndex<Summary>('index/summary.json');
 
   return (
     <Authenticator hideSignUp>
@@ -95,6 +97,12 @@ function Shell() {
               {tab === 'upload'   && <UploadView />}
             </TagsProvider>
           </main>
+
+          {summary?.generated && (
+            <footer className="app-footer">
+              🕐 Last indexed: <strong>{new Date(summary.generated).toLocaleString(lang === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</strong>
+            </footer>
+          )}
 
         </div>
       )}

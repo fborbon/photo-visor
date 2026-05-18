@@ -1226,3 +1226,15 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   .map-panel      { padding-bottom: env(safe-area-inset-bottom); }
   .year-rail      { padding-bottom: env(safe-area-inset-bottom); }
 }
+
+/* ── App footer — last execution datetime ────────────────────────── */
+.app-footer {
+  text-align: center;
+  padding: .55rem 1rem;
+  font-size: .75rem;
+  color: #666;
+  background: #111;
+  border-top: 1px solid #2a2a2a;
+  flex-shrink: 0;
+}
+.app-footer strong { color: #999; }
