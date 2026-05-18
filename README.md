@@ -11,27 +11,14 @@ A personal family photo viewer hosted on AWS — exploring 194 000+ photos acros
 ## Table of Contents
 
 1. [Overview](#1-overview)
-   - [Screenshots](#screenshots)
 2. [Architecture](#2-architecture)
 3. [Data Processing Pipeline](#3-data-processing-pipeline)
-   - 3.1 [Bulk Ingest](#31-bulk-ingest-scriptsbulk-ingestpy)
-   - 3.2 [Lambda EXIF Processor](#32-lambda-exif-processor-lambdasexif-processor)
-   - 3.3 [Photo Identity](#33-photo-identity)
-   - 3.4 [Datetime Recovery](#34-datetime-recovery)
-   - 3.5 [Geocoding](#35-geocoding)
 4. [Libraries & Dependencies](#4-libraries--dependencies)
 5. [Technologies NOT Used (and Why)](#5-technologies-not-used-and-why)
 6. [Data Flow Diagram](#6-data-flow-diagram)
-   - 6.1 [High-Level Architecture Flow](#61-high-level-architecture-flow-not-shown-above)
-   - 6.2 [Function-Level Call Graph](#62-function-level-call-graph)
 7. [AWS Cost Estimation](#7-aws-cost-estimation)
-   - 7.1 [Storage](#71-storage)
-   - 7.2 [Processing & Requests](#72-processing--requests)
-   - 7.3 [Connectivity](#73-connectivity)
-   - 7.4 [Auth & Infrastructure](#74-auth--infrastructure)
-   - 7.5 [AI Services](#75-ai-services)
-   - 7.6 [Monthly & Annual Summary](#76-monthly--annual-summary)
 8. [Setup & Deployment](#8-setup--deployment)
+9. [Auditing](#9-auditing)
 
 ---
 
