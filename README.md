@@ -1,12 +1,17 @@
 # 📷 Photo Visor
 
-A personal family photo viewer hosted on AWS — exploring 190 000+ photos across a world map and timeline with tagging, commenting, upload, and a slot-machine discovery mode. Built for minimal cost (~$2–3/month) with no database and no server.
+A personal family photo viewer hosted on AWS — exploring 194 000+ photos across a world map and timeline with tagging, commenting, direct upload, and a slot-machine random-discovery mode. The architecture is fully serverless and database-free: originals live in S3 Glacier Instant Retrieval, thumbnails and pre-computed JSON indexes are delivered via CloudFront, and an AWS Lambda handles EXIF processing for newly uploaded photos. A React 18 PWA serves the browser frontend; an Android app is available via Google Play Internal Testing.
+
+**Main technologies:** React 18 + TypeScript + Vite (PWA) · AWS S3 (Glacier IR + Standard) · Amazon CloudFront · AWS Cognito · AWS Lambda (Python) · AWS CDK (TypeScript, infrastructure-as-code) · Leaflet + react-leaflet (world map) · Capacitor 6 (Android) · Pillow + exifread (EXIF processing)
+
+**Monthly cost:** ~$2–3/month. Full breakdown in [Section 7 — AWS Cost Estimation](#7-aws-cost-estimation).
 
 ---
 
 ## Table of Contents
 
 1. [Overview](#1-overview)
+   - [Screenshots](#screenshots)
 2. [Architecture](#2-architecture)
 3. [Data Processing Pipeline](#3-data-processing-pipeline)
    - 3.1 [Bulk Ingest](#31-bulk-ingest-scriptsbulk-ingestpy)
@@ -50,6 +55,40 @@ Key user-facing tabs:
 - **Latest** — recently added photos, newest tags, newest comments
 - **Slot Machine** — random photo discovery (10 reels, slot-machine animation)
 - **Upload** — owner-only direct upload to S3 with EXIF processing
+
+---
+
+### Screenshots
+
+All images below use placeholder photos — no personal content is included.
+
+**🗺 Map** — photos plotted on a world map; clusters show photo count per region
+
+<p align="center"><img src="docs/screenshots/01_map.svg" alt="Map tab" width="900"/></p>
+
+**📅 Timeline** — browse by year → month → photo grid
+
+<p align="center"><img src="docs/screenshots/02_timeline.svg" alt="Timeline tab" width="900"/></p>
+
+**🏷 Tags** — private tags with photo grid; tags can optionally be shared with family
+
+<p align="center"><img src="docs/screenshots/03_tags.svg" alt="Tags tab" width="900"/></p>
+
+**🆕 Latest** — recently added, recently tagged, and recently commented photos
+
+<p align="center"><img src="docs/screenshots/04_latest.svg" alt="Latest tab" width="900"/></p>
+
+**🎰 Slots** — slot-machine random discovery; 10 reels each show a random photo
+
+<p align="center"><img src="docs/screenshots/05_slots.svg" alt="Slot Machine tab" width="900"/></p>
+
+**📊 Stats** — summary cards, photos-per-year bar chart, and top-countries breakdown
+
+<p align="center"><img src="docs/screenshots/06_stats.svg" alt="Statistics tab" width="900"/></p>
+
+**⬆ Upload** *(owner only)* — drag-and-drop upload with per-file progress; Lambda processes EXIF on arrival
+
+<p align="center"><img src="docs/screenshots/07_upload.svg" alt="Upload tab" width="900"/></p>
 
 ---
 
@@ -502,3 +541,33 @@ npx cap open android
 ### Environment / Secrets
 
 No secrets are committed. The only configuration is `stack-outputs.json` (CDK outputs) and `src/config.ts` (reads from stack outputs). AWS credentials are managed via IAM roles and the standard AWS credential chain.
+
+---
+
+## 9. Auditing
+
+This section provides a structured checklist for review by an IT expert and a cloud-architecture / data-management subject-matter expert.
+
+### Audit Items
+
+- **Cost & resource minimization** — ~$2–3/month, dominated by S3 Glacier Instant Retrieval for 475 GB of photo originals ($1.90/month). CloudFront delivery and Lambda EXIF processing remain within AWS free tiers. Cost is well-optimized for the data volume.
+- **IT architecture** — Fully serverless and database-free in production. CDK IaC provisions all resources reproducibly. Pre-computed JSON indexes eliminate query-time compute. CloudFront OAC enforces that S3 is never directly accessible. Architecture is appropriate and well-sized for a family photo viewer.
+- **Code efficiency** — Quick-hash (8-byte size ‖ first 64 KB ‖ last 64 KB) is ~400× faster than full-file SHA-256 with negligible collision probability for photographic content. Parallel S3 uploads via `ThreadPoolExecutor` (8 workers). Incremental ingest skips unchanged files using SQLite `mtime_ns` + size cache.
+- **Cybersecurity** — Cognito authentication is required for photo uploads (owner only). CloudFront OAC prevents direct S3 bucket access. No secrets are committed. Index JSON files (including `index/tags/{user}.json`) are served via CloudFront — if the URL structure is known, tag data could be read without authentication. Evaluating whether tag/comment indexes should require Cognito token validation is recommended.
+- **Readability & maintainability** — Function-level Mermaid call graphs for both the ingest script and Lambda are the clearest architectural documentation in the portfolio. CDK TypeScript code is the single source of truth for infrastructure.
+- **AI / ML** — No AI is used in production, which is appropriate for a photo viewer. The README explicitly notes that Claude Code was used for development only.
+- **Data resilience** — 475 GB of photo originals are stored in a single S3 bucket. No S3 versioning, cross-region replication, or documented backup strategy is mentioned. Loss of the bucket (accidental deletion) would be unrecoverable.
+- **Other** — Nominatim fair-use rate limit (1.1s delay) is respected. HEIC/HEIF support requires the optional `pillow-heif` package. No AWS cost alarm or budget alert is documented. Android app is in Google Play Internal Testing (not public).
+
+### Summary Table
+
+| Audit Item | Claude's Assessment | Human Expert Assessment |
+|---|---|---|
+| Cost & resource minimization | ~$2–3/month. S3 Glacier IR is the correct storage class for infrequently accessed originals. CloudFront and Lambda stay in free tier. | |
+| IT architecture | Serverless + database-free design is clean and appropriately sized. CDK IaC ensures reproducibility. Pre-computed indexes avoid runtime queries. | |
+| Code efficiency | Quick-hash is 400× faster than full SHA-256. Parallel uploads and incremental ingest minimize re-processing. | |
+| Cybersecurity | Cognito upload auth and CloudFront OAC are correct. Tag/comment index files may be readable without auth if URL is known — review recommended. | |
+| Readability & maintainability | Mermaid call graphs and CDK IaC are best-in-class for documentation and infrastructure reproducibility. | |
+| AI / ML | No AI in production. Appropriate for this use case. | |
+| Data resilience | No documented backup strategy for 475 GB of originals. S3 versioning or cross-region replication should be considered. | |
+| Other | Nominatim rate-limit respected. No AWS budget alert documented. Android app in internal testing only. | |
