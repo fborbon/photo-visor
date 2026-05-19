@@ -19,6 +19,7 @@ A personal family photo viewer hosted on AWS — exploring 194 000+ photos acros
 7. [AWS Cost Estimation](#7-aws-cost-estimation)
 8. [Setup & Deployment](#8-setup--deployment)
 9. [Auditing](#9-auditing)
+10. [CI/CD](#10-cicd)
 
 ---
 
@@ -559,3 +560,78 @@ This section provides a structured checklist for review by an IT expert and a cl
 | Data resilience | No documented backup strategy for 475 GB of originals. S3 versioning or cross-region replication should be considered. | |
 | Other | Nominatim rate-limit respected. No AWS budget alert documented. Android app in internal testing only. | |
 
+
+---
+
+## 10. CI/CD
+
+### What is CI/CD?
+
+**CI/CD** stands for **Continuous Integration / Continuous Deployment**. It is a software engineering practice that automates the steps of verifying, packaging, and releasing code whenever a change is pushed to the repository.
+
+- **Continuous Integration (CI)** — each push triggers automated checks that confirm the change doesn't break the codebase.
+- **Continuous Deployment (CD)** — once checks pass, the new version is automatically shipped to the live environment with no manual steps.
+
+### Key Benefits
+
+| Benefit | Description |
+|---|---|
+| **Speed** | Changes go live in seconds, not hours |
+| **Consistency** | Every deploy follows the exact same steps — no human error |
+| **Safety** | Broken code is caught before it reaches production |
+| **Traceability** | Every deployment is linked to a specific commit and author |
+| **Zero-downtime iterations** | Small frequent releases are safer than large rare ones |
+
+### How it is applied here
+
+Photo Visor is **fully serverless** — there is no EC2 instance to SSH into. On every push to `main`, GitHub Actions detects which paths changed and runs only the relevant job:
+
+- **`frontend/`** changes → build React PWA with Vite → sync to S3 `/app/` → invalidate CloudFront cache
+- **`lambdas/`** changes → install Python dependencies → zip → update the Lambda function in-place
+
+Path filtering prevents unnecessary rebuilds: a README change triggers neither job. The two jobs run independently in parallel when both paths change. `index.html` is always uploaded with `no-cache` headers so browsers pick up the new shell immediately; hashed asset bundles (`index-AbCd1234.js`) use a 1-year immutable cache for maximum CDN efficiency.
+
+**Trigger:** push to `main` (path-filtered per job)
+**Runner:** `ubuntu-latest` (GitHub-hosted)
+**Secrets required:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+
+### Implementation Diagram
+
+```mermaid
+flowchart TD
+    DEV([👨‍💻 Developer\npushes to main])
+    GH[GitHub repository\nfborbon/photo-visor]
+    GA[GitHub Actions\nubuntu-latest runner]
+    FILTER{paths-filter\ndetects changes}
+
+    subgraph FRONTEND [Job: frontend]
+        NCI[npm ci]
+        BUILD[npm run build\nVite + TypeScript]
+        S3[aws s3 sync\n→ S3 /app/]
+        CF[CloudFront invalidation\n/app/*]
+    end
+
+    subgraph LAMBDA [Job: lambda]
+        PIP[pip install\n→ package/]
+        ZIP[zip package/\n→ function.zip]
+        LMB[aws lambda\nupdate-function-code]
+    end
+
+    DONE1[✅ PWA live at\nfotos.forwardforecasting.eu]
+    DONE2[✅ Lambda updated\nphoto-visor-exif-processor]
+
+    DEV --> GH
+    GH --> GA
+    GA --> FILTER
+    FILTER -->|frontend/** changed| NCI
+    FILTER -->|lambdas/** changed| PIP
+    NCI --> BUILD --> S3 --> CF --> DONE1
+    PIP --> ZIP --> LMB --> DONE2
+
+    style DEV fill:#4a90d9,color:#fff
+    style DONE1 fill:#27ae60,color:#fff
+    style DONE2 fill:#27ae60,color:#fff
+    style FILTER fill:#8e44ad,color:#fff
+    style S3 fill:#e67e22,color:#fff
+    style LMB fill:#e67e22,color:#fff
+```
