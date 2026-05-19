@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "NODE_OPTIONS=--experimental-global-webcrypto tsc && vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && aws s3 sync dist/ s3://photo-visor-295936871972/app/ --delete && aws cloudfront create-invalidation --distribution-id E2JW5PYKNPPYOB --paths \"/app/*\""
+    "deploy": "npm run build && aws s3 sync dist/ s3://photo-visor-295936871972/app/ --delete && aws cloudfront create-invalidation --distribution-id E2JW5PYKNPPYOB --paths \"/app/*\"",
+    "build:demo": "vite build --config vite.config.demo.ts && mv dist-demo/index.demo.html dist-demo/index.html"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.0.0",

@@ -1,5 +1,6 @@
 const config = {
   cloudFrontUrl:    'https://fotos.forwardforecasting.eu',
+  indexBase:        'https://fotos.forwardforecasting.eu',
   bucketName:       'photo-visor-295936871972',
   region:           'eu-west-1',
   userPoolId:       'eu-west-1_GeFLGEa2J',

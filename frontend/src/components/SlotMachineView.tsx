@@ -28,7 +28,7 @@ export default function SlotMachineView() {
     if (loadedYears.current.has(year)) return;
     loadedYears.current.add(year);
     try {
-      const r = await fetch(config.cloudFrontUrl + '/index/time/' + year + '.json');
+      const r = await fetch(config.indexBase + '/index/time/' + year + '.json');
       if (!r.ok) return;
       const photos = await r.json() as PhotoEntry[];
       const withThumb = photos.filter(p => p.thumb);
