@@ -1,0 +1,112 @@
+# Required GitHub secrets:
+#   AWS_ACCESS_KEY_ID     — IAM user with S3 write + CloudFront invalidation + Lambda update permissions
+#   AWS_SECRET_ACCESS_KEY — corresponding secret key
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION:        eu-west-1
+  S3_BUCKET:         photo-visor-295936871972
+  CLOUDFRONT_ID:     E2JW5PYKNPPYOB
+  LAMBDA_FUNCTION:   photo-visor-exif-processor
+
+jobs:
+
+  # ── Detect which paths changed ──────────────────────────────────────────────
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      lambda:   ${{ steps.filter.outputs.lambda }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            lambda:
+              - 'lambdas/**'
+
+  # ── Frontend: build → S3 → CloudFront invalidation ─────────────────────────
+  frontend:
+    name: Build and deploy frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build
+        working-directory: frontend
+        run: |
+          npm ci
+          NODE_OPTIONS=--experimental-global-webcrypto npm run build
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Sync hashed assets (long cache)
+        run: |
+          aws s3 sync frontend/dist s3://${{ env.S3_BUCKET }}/app/ \
+            --delete \
+            --exclude "index.html" \
+            --cache-control "max-age=31536000,immutable"
+
+      - name: Sync index.html (no cache)
+        run: |
+          aws s3 cp frontend/dist/index.html \
+            s3://${{ env.S3_BUCKET }}/app/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ env.CLOUDFRONT_ID }} \
+            --paths "/app/*"
+          echo "✓ Frontend deployed at $(date -u)"
+
+  # ── Lambda: build package → zip → update function code ─────────────────────
+  lambda:
+    name: Deploy Lambda
+    needs: changes
+    if: needs.changes.outputs.lambda == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Build and deploy
+        working-directory: lambdas/exif-processor
+        run: |
+          pip3 install -r requirements.txt --target package --quiet
+          cp index.py package/
+          cd package && zip -r ../function.zip . -q
+          cd ..
+          aws lambda update-function-code \
+            --function-name ${{ env.LAMBDA_FUNCTION }} \
+            --zip-file fileb://function.zip \
+            --query "FunctionName" --output text
+          echo "✓ Lambda deployed at $(date -u)"
