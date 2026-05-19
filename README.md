@@ -558,3 +558,4 @@ This section provides a structured checklist for review by an IT expert and a cl
 | AI / ML | No AI in production. Appropriate for this use case. | |
 | Data resilience | No documented backup strategy for 475 GB of originals. S3 versioning or cross-region replication should be considered. | |
 | Other | Nominatim rate-limit respected. No AWS budget alert documented. Android app in internal testing only. | |
+
