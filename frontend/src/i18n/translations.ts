@@ -21,7 +21,9 @@ const t = {
 
     // Timeline
     yearsHeading:  'Years',
-    selectYearHint:'← Select a year to browse photos',
+    selectYearHint: '← Select a year to browse photos',
+    selectMonthHint:'Select a month above',
+    backToTop:     'Back to top',
     allMonths:     'All',
     loading:       'Loading…',
 
@@ -63,6 +65,11 @@ const t = {
     sharedTag:        'Shared',
     sharedBy:         'by',
     familyTags:       'Family Tags',
+    personalTags:     'Personal Tags',
+    systemTags:       'System Tags',
+    filterTags:       'Filter tags…',
+    noTagsMatch:      'No tags match the filter.',
+    noSystemTags:     'No system tags yet. Run bulk-ingest to generate them.',
 
     // Comments
     addComment:       'Add Comment',
@@ -110,6 +117,40 @@ const t = {
     privateSelected:  'Make private',
     publicSelected:   'Make public',
     clearSelection:   'Clear',
+
+    // Display name
+    welcomeTitle:        "What's your name?",
+    welcomeHint:         'This name will be shown in the app instead of your email.',
+    yourNamePlaceholder: 'Your name…',
+    continueBtn:         'Continue',
+
+    // Trash
+    tabTrash:            'Trash',
+    trashEmpty:          'Trash is empty',
+    trashRestore:        'Restore',
+    trashDeleteForever:  'Delete forever',
+    trashSelectAll:      'Select all',
+    deletePhoto:         'Move to Trash',
+    deleteTagConfirm:    'Delete this tag? Photos will not be deleted.',
+    // Auto-sync
+    tabSync:            'Sync',
+    syncTitle:          'Auto Sync',
+    syncNow:            'Sync Now',
+    syncRunning:        'Syncing…',
+    syncDone:           'Sync complete',
+    syncNever:          'Never synced',
+    syncLastSync:       'Last sync:',
+    syncOf:             'of',
+    syncUploaded:       'new photos uploaded',
+    syncSkipped:        'already in cloud',
+    syncFailed:         'failed',
+    syncNoNew:          'No new photos found',
+    syncAutoToggle:     'Auto-sync when app opens',
+    syncCameraNote:     'Camera album → shared with family',
+    syncOtherNote:      'Other albums → private to you',
+    syncFirstRun:       'First sync: all photos scanned. Existing uploads are skipped automatically.',
+    syncPermission:     'Gallery access is required. Please grant permission and retry.',
+    syncWebOnly:        'Auto-sync is only available in the Android app.',
   },
 
   es: {
@@ -129,7 +170,9 @@ const t = {
     noPhotos:         'No se encontraron fotos para este período.',
 
     yearsHeading:  'Años',
-    selectYearHint:'← Selecciona un año para ver las fotos',
+    selectYearHint: '← Selecciona un año para ver las fotos',
+    selectMonthHint:'Selecciona un mes arriba',
+    backToTop:     'Volver arriba',
     allMonths:     'Todas',
     loading:       'Cargando…',
 
@@ -167,6 +210,11 @@ const t = {
     sharedTag:        'Compartida',
     sharedBy:         'de',
     familyTags:       'Etiquetas de familia',
+    personalTags:     'Etiquetas personales',
+    systemTags:       'Etiquetas del sistema',
+    filterTags:       'Filtrar etiquetas…',
+    noTagsMatch:      'Ninguna etiqueta coincide con el filtro.',
+    noSystemTags:     'Aún no hay etiquetas del sistema. Ejecuta bulk-ingest para generarlas.',
 
     addComment:       'Añadir comentario',
     editComment:      'Editar comentario',
@@ -211,6 +259,40 @@ const t = {
     privateSelected:  'Hacer privadas',
     publicSelected:   'Hacer públicas',
     clearSelection:   'Limpiar',
+
+    // Nombre de usuario
+    welcomeTitle:        '¿Cómo te llamas?',
+    welcomeHint:         'Este nombre aparecerá en la app en lugar de tu correo.',
+    yourNamePlaceholder: 'Tu nombre…',
+    continueBtn:         'Continuar',
+
+    // Papelera
+    tabTrash:            'Papelera',
+    trashEmpty:          'La papelera está vacía',
+    trashRestore:        'Restaurar',
+    trashDeleteForever:  'Eliminar definitivamente',
+    trashSelectAll:      'Seleccionar todo',
+    deletePhoto:         'Mover a la papelera',
+    deleteTagConfirm:    '¿Eliminar esta etiqueta? Las fotos no se eliminarán.',
+    // Auto-sync
+    tabSync:            'Sincronizar',
+    syncTitle:          'Sincronización automática',
+    syncNow:            'Sincronizar ahora',
+    syncRunning:        'Sincronizando…',
+    syncDone:           'Sincronización completada',
+    syncNever:          'Nunca sincronizado',
+    syncLastSync:       'Última sincronización:',
+    syncOf:             'de',
+    syncUploaded:       'fotos nuevas subidas',
+    syncSkipped:        'ya estaban en la nube',
+    syncFailed:         'fallidas',
+    syncNoNew:          'No se encontraron fotos nuevas',
+    syncAutoToggle:     'Sincronizar automáticamente al abrir la app',
+    syncCameraNote:     'Álbum Cámara → compartido con la familia',
+    syncOtherNote:      'Otros álbumes → privados para ti',
+    syncFirstRun:       'Primera sincronización: se escanean todas las fotos. Las ya subidas se omiten automáticamente.',
+    syncPermission:     'Se necesita acceso a la galería. Concede el permiso e inténtalo de nuevo.',
+    syncWebOnly:        'La sincronización automática solo está disponible en la app de Android.',
   },
 } as const;
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useTags }        from '../context/TagsContext';
 import { useLang }        from '../context/LangContext';
 import { useIndex }       from '../hooks/useIndex';
@@ -27,7 +27,8 @@ function fmt(dt: string, months: readonly string[]): string {
 export default function LatestView() {
   const { tr }  = useLang();
   const ctx     = useTags();
-  const [subtab, setSubtab] = useState<Subtab>('added');
+  const [subtab,    setSubtab]    = useState<Subtab>('added');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const [clearedAdded,    setClearedAdded]    = useState(() => loadCleared('added'));
   const [clearedTags,     setClearedTags]     = useState(() => loadCleared('tags'));
@@ -59,14 +60,59 @@ export default function LatestView() {
   const { data: recentIndex, loading: recentLoading } = useIndex<RecentIndex>(
     subtab === 'added' ? 'index/recent.json' : null
   );
+
+  // Read the most-recent 100 records saved by useSync (refreshes on each tab visit)
+  const [syncedRecords] = useState((): { hash: string; s3_key: string; syncedAt: string }[] => {
+    try { return JSON.parse(localStorage.getItem('photo_sync_recent') ?? '[]'); }
+    catch { return []; }
+  });
+
+  // ── Shared photo lookup (used by both Added and Comments) ──────────
+  const photoByHash = useMemo((): Record<string, PhotoEntry> => {
+    const map: Record<string, PhotoEntry> = {};
+    for (const e of Object.values(ctx.tags))       for (const p of e.photos) map[p.hash] = p;
+    for (const e of Object.values(ctx.sharedTags)) for (const p of e.photos) map[p.hash] = p;
+    if (recentIndex) for (const p of recentIndex.photos) map[p.hash] = p;
+    return map;
+  }, [ctx.tags, ctx.sharedTags, recentIndex]);
+
   const clearedAddedMs = clearedAdded ? Date.parse(clearedAdded) : 0;
-  const addedPhotos = recentIndex
-    ? recentIndex.photos.filter(p => {
-        if (!clearedAdded) return true;
-        const ts = Date.parse(p.addedAt);
-        return !isNaN(ts) && ts > clearedAddedMs;
-      })
-    : [];
+
+  // Merge localStorage sync log + recent.json, deduplicated, newest first, cap 100
+  const addedPhotos = useMemo((): PhotoEntry[] => {
+    const seen  = new Set<string>();
+    const items: { photo: PhotoEntry; sort: string }[] = [];
+
+    for (const rec of syncedRecords) {
+      if (seen.has(rec.hash)) continue;
+      if (clearedAdded && rec.syncedAt <= clearedAdded) continue;
+      seen.add(rec.hash);
+      const photo: PhotoEntry = photoByHash[rec.hash] ?? {
+        hash: rec.hash, s3_key: rec.s3_key, thumb: null,
+        dt: null, lat: null, lng: null, w: null, h: null,
+      };
+      items.push({ photo, sort: rec.syncedAt });
+    }
+
+    if (recentIndex) {
+      for (const p of recentIndex.photos) {
+        if (seen.has(p.hash)) continue;
+        if (clearedAdded) {
+          const ts = Date.parse(p.addedAt);
+          if (!isNaN(ts) && ts <= clearedAddedMs) continue;
+        }
+        seen.add(p.hash);
+        items.push({ photo: p, sort: p.addedAt });
+      }
+    }
+
+    return items
+      .sort((a, b) => sortOrder === 'desc'
+        ? b.sort.localeCompare(a.sort)
+        : a.sort.localeCompare(b.sort))
+      .slice(0, 100)
+      .map(x => x.photo);
+  }, [syncedRecords, photoByHash, recentIndex, clearedAdded, clearedAddedMs, sortOrder]);
 
   // ── Tags subtab ───────────────────────────────────────────────────
   const allTagsSorted = [
@@ -83,11 +129,6 @@ export default function LatestView() {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   // ── Comments subtab ───────────────────────────────────────────────
-  const photoByHash: Record<string, PhotoEntry> = {};
-  for (const e of Object.values(ctx.tags))       for (const p of e.photos) photoByHash[p.hash] = p;
-  for (const e of Object.values(ctx.sharedTags)) for (const p of e.photos) photoByHash[p.hash] = p;
-  if (recentIndex) for (const p of recentIndex.photos) photoByHash[p.hash] = p;
-
   const commentItems = Object.entries(ctx.commentTimes)
     .map(([hash, updatedAt]) => ({
       hash, updatedAt,
@@ -131,6 +172,18 @@ export default function LatestView() {
       {/* ── Added ─────────────────────────────────────────────────── */}
       {subtab === 'added' && (
         <div className="latest-body">
+          {addedPhotos.length > 0 && (
+            <div className="timeline-sort-row">
+              <button
+                className={'timeline-sort-btn' + (sortOrder === 'desc' ? ' active' : '')}
+                onClick={() => setSortOrder('desc')}
+              >↓ Newest</button>
+              <button
+                className={'timeline-sort-btn' + (sortOrder === 'asc' ? ' active' : '')}
+                onClick={() => setSortOrder('asc')}
+              >↑ Oldest</button>
+            </div>
+          )}
           {recentLoading && <p className="panel-loading">{tr.loading}</p>}
           {!recentLoading && addedPhotos.length === 0 && (
             <p className="panel-loading">{tr.noRecentPhotos}</p>

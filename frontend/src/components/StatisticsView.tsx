@@ -3,6 +3,8 @@ import { useLang }   from '../context/LangContext';
 import { useIndex }  from '../hooks/useIndex';
 import { StatsIndex, MonthStat } from '../types';
 
+interface NavProps { onNavigate?: (year: number, month: number) => void; }
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtNum(n: number): string {
@@ -102,15 +104,17 @@ function CumulativeChart({ byMonth }: { byMonth: MonthStat[] }) {
 }
 
 // ── Monthly bar chart ──────────────────────────────────────────────────────
-function MonthlyBarChart({ byMonth }: { byMonth: MonthStat[] }) {
+function MonthlyBarChart({ byMonth, onBarClick }: { byMonth: MonthStat[]; onBarClick?: (year: number, month: number) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const cw  = useContainerWidth(ref);
+  const { tr } = useLang();
   const H   = 260;
   const IH  = H - MT - MB;
   const IW  = Math.max(1, cw - ML - MR);
 
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
   const n    = byMonth.length;
-  // Fit all bars in the available width — no horizontal scroll
   const slot = IW / n;
   const barW = Math.max(1, slot - Math.min(1, slot * 0.15));
 
@@ -125,10 +129,25 @@ function MonthlyBarChart({ byMonth }: { byMonth: MonthStat[] }) {
   });
   const yStep = yearMarks.length > 14 ? 5 : yearMarks.length > 7 ? 2 : 1;
 
+  // Tooltip for hovered bar
+  const tooltip = hoveredIdx !== null ? (() => {
+    const d   = byMonth[hoveredIdx];
+    const bh  = Math.max(1, (d.count / maxV) * IH);
+    const cx  = hoveredIdx * slot + slot / 2;
+    const [yr, mo] = d.ym.split('-').map(Number);
+    const label = `${tr.months[mo]} ${yr}`;
+    const count = d.count.toLocaleString();
+    // Keep tooltip inside chart horizontally
+    const ttW = 108;
+    const ttX = Math.max(ttW / 2, Math.min(IW - ttW / 2, cx));
+    const ttY = Math.max(0, IH - bh - 44);
+    return { ttX, ttY, label, count };
+  })() : null;
+
   return (
     <div ref={ref} style={{ width: '100%' }}>
       {cw > 0 && (
-        <svg width={cw} height={H} style={{ display: 'block' }}>
+        <svg width={cw} height={H} style={{ display: 'block', cursor: onBarClick ? 'pointer' : 'default' }}>
           <g transform={`translate(${ML},${MT})`}>
             {/* Grid */}
             {yTicks.map(t => (
@@ -137,18 +156,38 @@ function MonthlyBarChart({ byMonth }: { byMonth: MonthStat[] }) {
             ))}
             {/* Bars */}
             {byMonth.map((d, i) => {
-              const bh  = Math.max(1, (d.count / maxV) * IH);
-              const x   = i * slot + (slot - barW) / 2;
-              const isJan = d.ym.slice(5) === '01';
+              const bh     = Math.max(1, (d.count / maxV) * IH);
+              const x      = i * slot + (slot - barW) / 2;
+              const isHov  = hoveredIdx === i;
+              const isJan  = d.ym.slice(5) === '01';
+              const fill   = isHov ? '#ff6600' : (isJan ? '#ff0084' : '#cc006a');
+              const [yr, mo] = d.ym.split('-').map(Number);
               return (
                 <rect key={d.ym}
                   x={x.toFixed(2)} y={(IH - bh).toFixed(1)}
                   width={barW.toFixed(2)} height={bh.toFixed(1)}
-                  fill={isJan ? '#ff0084' : '#cc006a'}
-                  opacity={0.85} rx={barW > 6 ? 2 : 0}
+                  fill={fill} opacity={isHov ? 1 : 0.85} rx={barW > 6 ? 2 : 0}
+                  onMouseEnter={() => setHoveredIdx(i)}
+                  onMouseLeave={() => setHoveredIdx(null)}
+                  onClick={() => onBarClick?.(yr, mo)}
+                  style={{ cursor: onBarClick ? 'pointer' : 'default' }}
                 />
               );
             })}
+            {/* Hover tooltip */}
+            {tooltip && (
+              <g transform={`translate(${tooltip.ttX.toFixed(1)},${tooltip.ttY.toFixed(1)})`}
+                style={{ pointerEvents: 'none' }}>
+                <rect x={-54} y={0} width={108} height={34} rx={4}
+                  fill="#1c1c1c" stroke="#ff6600" strokeWidth={1} />
+                <text x={0} y={13} textAnchor="middle" fill="#ff9944" fontSize={11} fontWeight="600">
+                  {tooltip.label}
+                </text>
+                <text x={0} y={27} textAnchor="middle" fill="#aaa" fontSize={10}>
+                  {tooltip.count} photos
+                </text>
+              </g>
+            )}
             {/* X axis */}
             <line x1={0} y1={IH} x2={IW} y2={IH} stroke="#2e2e2e" />
             {yearMarks.filter((_, i) => i % yStep === 0).map(t => (
@@ -175,7 +214,7 @@ function MonthlyBarChart({ byMonth }: { byMonth: MonthStat[] }) {
 }
 
 // ── Main view ──────────────────────────────────────────────────────────────
-export default function StatisticsView() {
+export default function StatisticsView({ onNavigate }: NavProps) {
   const { tr } = useLang();
   const { data: stats, loading } = useIndex<StatsIndex>('index/stats.json');
 
@@ -210,7 +249,7 @@ export default function StatisticsView() {
           {/* ── Monthly bar chart ────────────────────────────────────── */}
           <div className="stats-card">
             <h3 className="stats-card-title">{tr.statsMonthly}</h3>
-            <MonthlyBarChart byMonth={stats.by_month} />
+            <MonthlyBarChart byMonth={stats.by_month} onBarClick={onNavigate} />
           </div>
         </>
       )}

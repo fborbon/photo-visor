@@ -1,11 +1,13 @@
 import { createContext, useContext, ReactNode } from 'react';
-import { PhotoEntry, AlbumRef, TagEntry, SharedTagEntry } from '../types';
+import { PhotoEntry, AlbumRef, TagEntry, SharedTagEntry, SystemTagIndex } from '../types';
 
 interface TagsCtx {
-  tags:            Record<string, TagEntry>;
-  tagNames:        string[];
-  sharedTags:      Record<string, SharedTagEntry>;
-  sharedTagNames:  string[];
+  tags:              Record<string, TagEntry>;
+  tagNames:          string[];
+  sharedTags:        Record<string, SharedTagEntry>;
+  sharedTagNames:    string[];
+  systemTagIndex:    SystemTagIndex;
+  systemTagsLoading: boolean;
   addPhotoToTag:   (photo: PhotoEntry, tagName: string, shared: boolean) => Promise<void>;
   addAlbumToTag:   (album: AlbumRef,  tagName: string, shared: boolean) => Promise<void>;
   removePhotoTag:  (hash: string,     tagName: string, shared: boolean) => Promise<void>;
@@ -17,6 +19,22 @@ interface TagsCtx {
   ownerKey:        string;
   isMySharedTag:   (tagName: string) => boolean;
 }
+
+// Demo system tag index — one pin per city present in the demo photos.
+// Tag names follow the same convention as the real bulk-ingest output so
+// that MapView's sysTagCountryKey / sysTagCityKey logic resolves coords.
+const DEMO_SYSTEM_TAG_INDEX: SystemTagIndex = {
+  updated: '2025-01-01T00:00:00Z',
+  tags: {
+    'USA/New York':        { count: 4,  slug: 'USA_New_York' },
+    'France/Paris':        { count: 5,  slug: 'France_Paris' },
+    'Argentina/Buenos Aires': { count: 2, slug: 'Argentina_Buenos_Aires' },
+    'Australia/Sydney':    { count: 3,  slug: 'Australia_Sydney' },
+    'Kenya/Nairobi':       { count: 5,  slug: 'Kenya_Nairobi' },
+    'Japan/Tokyo':         { count: 1,  slug: 'Japan_Tokyo' },
+    'España/Barcelona':    { count: 2,  slug: 'España_Barcelona' },
+  },
+};
 
 // ── Demo photo stubs (hashes match dist-demo/index/recent.json) ──────
 const p = (hash: string, s3pfx: string, dt: string, lat: number, lng: number,
@@ -125,6 +143,8 @@ const TagsContext = createContext<TagsCtx>({
   tagNames: Object.keys(TAGS).sort(),
   sharedTags: SHARED_TAGS,
   sharedTagNames: Object.keys(SHARED_TAGS).sort(),
+  systemTagIndex: DEMO_SYSTEM_TAG_INDEX,
+  systemTagsLoading: false,
   addPhotoToTag: async () => {}, addAlbumToTag:  async () => {},
   removePhotoTag: async () => {}, removeAlbumTag: async () => {},
   deleteTag: async () => {},
@@ -142,6 +162,8 @@ export function TagsProvider({ children }: { children: ReactNode }) {
       tagNames: Object.keys(TAGS).sort(),
       sharedTags: SHARED_TAGS,
       sharedTagNames: Object.keys(SHARED_TAGS).sort(),
+      systemTagIndex: DEMO_SYSTEM_TAG_INDEX,
+      systemTagsLoading: false,
       addPhotoToTag: async () => {}, addAlbumToTag:  async () => {},
       removePhotoTag: async () => {}, removeAlbumTag: async () => {},
       deleteTag: async () => {},

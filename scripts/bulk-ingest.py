@@ -24,6 +24,8 @@ import hashlib
 import sqlite3
 import argparse
 import logging
+import subprocess
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -39,7 +41,7 @@ from tqdm import tqdm
 _HERE = Path(__file__).parent
 _OUTPUTS = json.loads((_HERE.parent / "stack-outputs.json").read_text())
 
-PHOTOS_ROOT   = Path("/mnt/sda2/Personal/Fotos")
+PHOTOS_ROOT   = Path("/media/patito/seagate/Personal/Fotos")
 BUCKET        = _OUTPUTS["bucketName"]
 REGION        = _OUTPUTS["region"]
 DB_PATH       = _HERE / "state.db"
@@ -52,6 +54,8 @@ NOMINATIM_DELAY = 1.1   # seconds between API calls (OSM fair-use policy)
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".jpe", ".png", ".heic", ".heif", ".bmp", ".tif", ".tiff", ".cr2", ".nef", ".arw", ".dng", ".orf", ".rw2"}
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".3gp", ".mpg", ".vob", ".wmv", ".mp3"}
+# Video formats that browsers/Android WebView cannot play natively → must transcode to MP4
+NON_MP4_VIDEO_EXTS = {".mov", ".avi", ".3gp", ".mpg", ".vob", ".wmv"}
 SKIP_EXTS  = {".ds_store", ".ini", ".txt", ".htm", ".html", ".js", ".css", ".pdf",
               ".doc", ".pps", ".zip", ".nomedia", ".thm", ".gif"}
 
@@ -59,10 +63,12 @@ SKIP_EXTS  = {".ds_store", ".ini", ".txt", ".htm", ".html", ".js", ".css", ".pdf
 
 # Top-level folders that are purely geographic (continent buckets)
 GEO_CONTINENT_ROOTS = {
-    "Africa":       "Africa",
-    "Europa":       "Europe",
-    "Suramerica":   "South America",
-    "Norteamerica": "North America",
+    "Africa":        "Africa",
+    "Europa":        "Europe",
+    "Latinoamerica": "Latin America",
+    "Norteamerica":  "North America",
+    "Suramerica":    "South America",
+    "Asia":          "Asia",
 }
 
 # Top-level folders treated as non-geographic → everything goes to general/
@@ -70,7 +76,17 @@ NON_GEO_ROOTS = {
     "Apuntes", "Atardeceres", "Automoviles", "Comics-Arts",
     "Comidas y recetas", "Google Earth", "Lecturas", "Memes",
     "Ordenar", "Otros", "Películas", "Wallpapers",
-    ".Amigos", ".Whatsapp",
+}
+
+# .Amigos folder-name country prefix → (sys-tag Spanish name, English for geocoding, continent)
+_AMIGOS_COUNTRY_MAP: dict[str, tuple[str, str, str]] = {
+    "Australia":   ("Australia",  "Australia",   "Oceania"),
+    "Brasil":      ("Brasil",     "Brazil",      "South America"),
+    "Costa Rica":  ("Costa Rica", "Costa Rica",  "Central America"),
+    "España":      ("España",     "Spain",       "Europe"),
+    "Germany":     ("Alemania",   "Germany",     "Europe"),
+    "Netherlands": ("Holanda",    "Netherlands", "Europe"),
+    "Portugal":    ("Portugal",   "Portugal",    "Europe"),
 }
 
 # Spanish (and other) country names → English for Nominatim
@@ -82,13 +98,17 @@ COUNTRY_NORMALIZE = {
     "Polonia": "Poland", "Israel": "Israel", "Monaco": "Monaco",
     "Andorra": "Andorra", "Suiza": "Switzerland", "Turquia": "Turkey",
     "Portugal": "Portugal", "Yugoslavia": "Croatia",
+    "Austria": "Austria", "Eslovaquia": "Slovakia", "Republica Checa": "Czech Republic",
     "Paises Balticos": None,  # sub-folders give actual city
     "Egipto": "Egypt",
     "Colombia": "Colombia", "Cuba": "Cuba", "Guatemala": "Guatemala",
     "Chile": "Chile", "Argentina": "Argentina", "Uruguay": "Uruguay",
-    "Peru": "Peru", "Bolivia": "Bolivia",
+    "Peru": "Peru", "Perú": "Peru", "Bolivia": "Bolivia",
     "Costa Rica": "Costa Rica",
     "Canada": "Canada",
+    "USA": "USA",
+    "Japón": "Japan", "Tailandia": "Thailand",
+    "Australia": "Australia", "UAE": "UAE",
 }
 
 # Folder names at continent/country level-2 that are NOT countries
@@ -100,6 +120,10 @@ _NON_COUNTRY_LEVEL2 = {
     "Viaje Europa - Rosibel y Pablo - Agosto 2014",
     "Viaje Rosibel Canada - Agosto 2010",
     "Viaje Monica - Julio 2015",
+    "USA - Fernando-julio 2003",
+    "USA - Providence Rhode Island - Fernando-julio 2003",
+    "USA - Providence Rhode Island -  Julio 2004",
+    "USA - California - Viaje Monica - Julio 2015",
 }
 
 # Words that disqualify the first token of a folder name from being a city
@@ -108,7 +132,7 @@ _NON_CITY_WORDS = {
     "Julio", "Agosto", "Septiembre", "Setiembre", "Octubre", "Noviembre",
     "Imprimir", "Repetidos", "Inmobiliaria", "Celular", "Viaje",
     "Reunion", "Clausura", "Bejiga", "Boda", "Defensa", "Graduacion",
-    "Graduación", "Gijon", "DIS",
+    "Graduación", "DIS",
 }
 
 # Spanish months → number
@@ -179,6 +203,8 @@ def open_db() -> sqlite3.Connection:
     existing = set(row[1] for row in db.execute("PRAGMA table_info(photos)"))
     if "mtime_ns" not in existing:
         db.execute("ALTER TABLE photos ADD COLUMN mtime_ns INTEGER")
+    if "video_proxy_key" not in existing:
+        db.execute("ALTER TABLE photos ADD COLUMN video_proxy_key TEXT")
     db.commit()
     return db
 
@@ -405,6 +431,94 @@ def _date_from_folder(folder_name: str) -> tuple[Optional[int], Optional[int]]:
     return year, month
 
 
+def _system_tag(rel_path: str) -> Optional[str]:
+    """
+    Derive the system tag from the file path.
+
+    Camera/Europa/España/Navarra/Pamplona/2025/file.jpg    → "España/Navarra/Pamplona/2025"
+    .Amigos/España - Pamplona/Eva/Dublin 2016/file.jpg     → "España/Pamplona - Eva"
+    .Whatsapp/Familia/file.jpg                             → "Costa Rica/Tibás - Whatsapp"
+    Memes/funny.jpg                                        → None
+    """
+    parts = Path(rel_path).parts
+    if not parts:
+        return None
+
+    # .Amigos/{Country} - {City}/{Person}/...  → {country_es}/{city} - {person}
+    if parts[0] == ".Amigos":
+        if len(parts) < 4:
+            return None
+        country_city = parts[1]
+        if " - " not in country_city:
+            return None
+        country_folder, city = country_city.split(" - ", 1)
+        mapping = _AMIGOS_COUNTRY_MAP.get(country_folder)
+        if not mapping:
+            return None
+        country_es = mapping[0]
+        person = parts[2]
+        return f"{country_es}/{city} - {person}"
+
+    # .Whatsapp/...  → all pinned at Tibás, Costa Rica
+    if parts[0] == ".Whatsapp":
+        return "Costa Rica/Tibás - Whatsapp"
+
+    if parts[0] != "Camera" or len(parts) < 3:
+        return None
+    dir_parts = list(parts[1:-1])   # between Camera/ and filename
+    if not dir_parts:
+        return None
+    # Strip the continent level when it's a known continent bucket
+    if dir_parts[0] in GEO_CONTINENT_ROOTS:
+        tag_parts = dir_parts[1:]
+    else:
+        tag_parts = dir_parts
+
+    # Camera/Europa/Visitas/{Trip}/{Country} - {City}/...  → {country_es}/{city} - {trip}
+    if (len(tag_parts) >= 3 and tag_parts[0] == "Visitas"
+            and " - " in tag_parts[2]):
+        trip = tag_parts[1]
+        country_es, city = tag_parts[2].split(" - ", 1)
+        if country_es in COUNTRY_NORMALIZE:
+            return f"{country_es}/{city} - {trip}"
+
+    # Camera/Latinoamerica/Costa Rica/{geo_cat}/{city}/...  → "Costa Rica/{city}"
+    _CR_GEO_CATS = {"Turismo CR", "Voluntariados",
+                    "Paseos en automovil", "Paseos en bicicleta"}
+    if (len(tag_parts) >= 3 and tag_parts[0] == "Costa Rica"
+            and tag_parts[1] in _CR_GEO_CATS):
+        return f"Costa Rica/{tag_parts[2]}"
+    # Costa Rica non-geo categories → no sys tag
+    if (len(tag_parts) >= 2 and tag_parts[0] == "Costa Rica"
+            and tag_parts[1] in {"Familia", "Visitas"}):
+        return None
+
+    # "{Country} - {City}/Album..." → group all albums under the country-city label.
+    # When a city sub-folder exists (trip-style folders), promote it to the tag so that
+    # each city gets its own map pin (e.g. "USA - Boston") instead of a trip-level tag.
+    if len(tag_parts) >= 1 and " - " in tag_parts[0]:
+        country_cand = tag_parts[0].split(" - ")[0].strip()
+        if country_cand in COUNTRY_NORMALIZE:
+            if len(tag_parts) >= 2:
+                return f"{country_cand} - {tag_parts[1]}"
+            return tag_parts[0]
+
+    # España/Navarra: skip region level; normalize city name so e.g. all
+    # "Alaiz - *" subfolders map to one "España/Alaiz" sys tag.
+    if len(tag_parts) >= 3 and tag_parts[0] == "España" and tag_parts[1] == "Navarra":
+        city_name = _extract_city_token(tag_parts[2]) or tag_parts[2]
+        return f"España/{city_name}"
+
+    # USA/Canada: collapse trip-folder level so each city gets its own pin.
+    # Camera/Norteamerica/USA/{trip}/{city}/ → "USA/{city}"
+    # Camera/Norteamerica/USA/California - Viaje Monica/Los Angeles/ → "USA/Los Angeles"
+    if len(tag_parts) >= 3 and tag_parts[0] == "USA":
+        city = _extract_city_token(tag_parts[2]) or tag_parts[2]
+        return f"USA/{city}"
+
+    return "/".join(tag_parts) if tag_parts else None
+
+
 def classify_path(rel_path: str) -> dict:
     """
     Classify a relative photo path into geo or general metadata.
@@ -418,7 +532,32 @@ def classify_path(rel_path: str) -> dict:
     if len(parts) < 2:
         return {"type": "general", "folder": parts[0] if parts else "unknown"}
 
+    # Strip the Camera/ prefix — the geo/general structure starts beneath it
+    if parts[0] == "Camera":
+        parts = parts[1:]
+        if len(parts) < 2:
+            return {"type": "general", "folder": "Camera"}
+
     root = parts[0]
+
+    # ── .Amigos: Country - City/Person/Album structure ───────────────────────
+    if root == ".Amigos":
+        if len(parts) < 4 or " - " not in parts[1]:
+            return {"type": "general", "folder": str(Path(*parts[:-1])).lstrip(".")}
+        country_folder, city = parts[1].split(" - ", 1)
+        mapping = _AMIGOS_COUNTRY_MAP.get(country_folder)
+        if not mapping:
+            return {"type": "general", "folder": str(Path(*parts[:-1])).lstrip(".")}
+        _, country_en, continent = mapping
+        return {"type": "geo", "continent": continent,
+                "country": country_en, "city": city,
+                "folder_hint_year": None, "folder_hint_month": None}
+
+    # ── .Whatsapp: all photos pinned at Tibás, Costa Rica ────────────────────
+    if root == ".Whatsapp":
+        return {"type": "geo", "continent": "Central America",
+                "country": "Costa Rica", "city": "Tibás",
+                "folder_hint_year": None, "folder_hint_month": None}
 
     # ── Purely non-geographic roots ──────────────────────────────────────────
     if root in NON_GEO_ROOTS:
@@ -489,18 +628,48 @@ def classify_path(rel_path: str) -> dict:
             folder = str(Path(*parts[:-1])).lstrip(".")
             return {"type": "general", "folder": folder}
 
-        # ── "Andorra - Girona" style two-place level-2 folder (Europa root) ──
-        if " - " in level2 and root == "Europa":
-            # Treat the whole level-2 name as a city-like string
-            city = _extract_city_token(level2) or level2
-            country = COUNTRY_NORMALIZE.get(level2.split(" - ")[0], None)
-            hy, hm = _date_from_folder(level2)
-            return {"type": "geo", "continent": continent,
-                    "country": country, "city": city,
-                    "folder_hint_year": hy, "folder_hint_month": hm}
+        # ── Visitas: Camera/Europa/Visitas/{Trip}/{Country} - {City}/ ────────
+        if level2 == "Visitas":
+            if len(parts) >= 5 and " - " in parts[3]:
+                country_raw, city = parts[3].split(" - ", 1)
+                country = COUNTRY_NORMALIZE.get(country_raw)
+                if country:
+                    return {"type": "geo", "continent": continent,
+                            "country": country, "city": city,
+                            "folder_hint_year": None, "folder_hint_month": None}
+            folder = str(Path(*parts[:-1])).lstrip(".")
+            return {"type": "general", "folder": folder}
+
+        # ── "Country - City" style level-2 folder (any continent) ─────────────
+        if " - " in level2:
+            parts_l2    = level2.split(" - ", 1)
+            country_raw = parts_l2[0].strip()
+            city_raw    = parts_l2[1].strip() if len(parts_l2) > 1 else None
+            country     = COUNTRY_NORMALIZE.get(country_raw)
+            if country:
+                hy, hm = _date_from_folder(level2)
+                return {"type": "geo", "continent": continent,
+                        "country": country, "city": city_raw,
+                        "folder_hint_year": hy, "folder_hint_month": hm}
+            folder = str(Path(*parts[:-1])).lstrip(".")
+            return {"type": "general", "folder": folder}
 
         # ── Standard Continent / Country / City structure ────────────────────
         country = COUNTRY_NORMALIZE.get(level2, level2)
+
+        # ── Costa Rica inside Latinoamerica: continent/Costa Rica/{cat}/{city}/ ─
+        _CR_GEO_CATS = {"Turismo CR", "Voluntariados",
+                        "Paseos en automovil", "Paseos en bicicleta"}
+        if country == "Costa Rica" and len(parts) >= 5 and parts[2] in _CR_GEO_CATS:
+            city = _extract_city_token(parts[3]) or parts[3]
+            hy, hm = _date_from_folder(parts[3])
+            return {"type": "geo", "continent": continent,
+                    "country": "Costa Rica", "city": city,
+                    "folder_hint_year": hy, "folder_hint_month": hm}
+        if country == "Costa Rica" and len(parts) >= 4 and parts[2] in {"Familia", "Visitas"}:
+            folder = str(Path(*parts[:-1])).lstrip(".")
+            return {"type": "general", "folder": folder}
+
         if country is None:
             # Country entry maps to None (e.g. "Paises Balticos" splits into sub-cities)
             if len(parts) >= 4:
@@ -523,6 +692,15 @@ def classify_path(rel_path: str) -> dict:
         else:
             # File is directly inside the country folder – no city sub-folder
             city = hy = hm = None
+
+        # España/Navarra: region folder → subfolder is the actual city
+        if country == "Spain" and city == "Navarra" and len(parts) >= 5:
+            sub_city = _extract_city_token(parts[3])
+            if sub_city and sub_city != "Navarra":
+                hy2, hm2 = _date_from_folder(parts[3])
+                city = sub_city
+                hy = hy2 or hy
+                hm = hm2 or hm
 
         return {"type": "geo", "continent": continent,
                 "country": country, "city": city,
@@ -636,6 +814,55 @@ def upload_thumbnail(s3, thumb_bytes: bytes, file_hash: str, dry_run: bool) -> s
     return key
 
 
+# ── Video transcoding ─────────────────────────────────────────────────────────
+
+def _proxy_key(file_hash: str) -> str:
+    return f"proxies/{file_hash[:2]}/{file_hash}.mp4"
+
+
+def transcode_to_mp4(source: Path) -> Optional[bytes]:
+    """Transcode a non-MP4 video to H.264 MP4. Returns bytes or None on failure."""
+    if source.suffix.lower() not in NON_MP4_VIDEO_EXTS:
+        return None
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp_path = tmp.name
+    try:
+        result = subprocess.run([
+            "ffmpeg", "-y", "-i", str(source),
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart",
+            tmp_path,
+        ], capture_output=True, timeout=600)
+        if result.returncode != 0:
+            log.warning(f"ffmpeg failed for {source.name}: {result.stderr[-300:].decode(errors='replace')}")
+            return None
+        with open(tmp_path, "rb") as f:
+            return f.read()
+    except subprocess.TimeoutExpired:
+        log.warning(f"ffmpeg timeout for {source.name}")
+        return None
+    except Exception as e:
+        log.warning(f"ffmpeg error for {source.name}: {e}")
+        return None
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
+def upload_video_proxy(s3, proxy_bytes: bytes, file_hash: str, dry_run: bool) -> Optional[str]:
+    key = _proxy_key(file_hash)
+    if dry_run:
+        return key
+    try:
+        s3.put_object(Bucket=BUCKET, Key=key, Body=proxy_bytes,
+                      ContentType="video/mp4", CacheControl="max-age=2592000")
+        return key
+    except Exception as e:
+        log.warning(f"S3 proxy upload failed {key}: {e}")
+        return None
+
+
 # ── Index building ────────────────────────────────────────────────────────────
 
 def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
@@ -661,8 +888,10 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
                 "country": row["country"],
                 "city":    row["city"],
                 "folder":  row["general_folder"],
+                "path":    row["current_path"],
                 "w":       row["width"],
                 "h":       row["height"],
+                "video_proxy": row["video_proxy_key"],
             })
 
     for year, photos in by_year.items():
@@ -685,8 +914,10 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
             "country": row["country"],
             "city":    row["city"],
             "folder":  row["general_folder"],
+            "path":    row["current_path"],
             "w":       row["width"],
             "h":       row["height"],
+            "video_proxy": row["video_proxy_key"],
         })
 
     for loc_key, photos in by_location.items():
@@ -707,8 +938,10 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
             "country": row["country"],
             "city":    row["city"],
             "folder":  row["general_folder"],
+            "path":    row["current_path"],
             "w":       row["width"],
             "h":       row["height"],
+            "video_proxy": row["video_proxy_key"],
         })
 
     for folder_key, photos in by_folder.items():
@@ -749,7 +982,8 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
     # ── index/recent.json — last 100 added photos (for Latest > Added tab) ────
     recent_rows = db.execute("""
         SELECT hash, s3_key, thumb_key, datetime_taken, year, month, day,
-               lat, lng, country, city, general_folder, width, height, created_at
+               lat, lng, country, city, general_folder, current_path, width, height, created_at,
+               video_proxy_key
         FROM photos
         WHERE status='active' AND s3_uploaded=1
         ORDER BY created_at DESC
@@ -766,8 +1000,10 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
         "country": r["country"],
         "city":    r["city"],
         "folder":  r["general_folder"],
+        "path":    r["current_path"],
         "w":       r["width"],
         "h":       r["height"],
+        "video_proxy": r["video_proxy_key"],
     } for r in recent_rows]
     _put_index(s3, "index/recent.json", {"updated": datetime.now().isoformat(), "photos": recent_photos}, dry_run)
 
@@ -800,9 +1036,69 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
         "by_month":  by_month,
     }, dry_run)
 
+    # ── index/private.json — hashes of non-Camera photos (owner-only) ──────────
+    non_camera = [r for r in active if not str(r["current_path"] or "").startswith("Camera/")]
+    private_hashes = [r["hash"] for r in non_camera]
+    _put_index(s3, "index/private.json", {"photos": private_hashes, "albums": []}, dry_run)
+
+    # ── index/tags/system.json + index/sys/{slug}.json ────────────────────────
+    by_sys_tag: dict[str, list] = {}
+    for row in active:
+        tag = _system_tag(row["current_path"] or "")
+        if not tag:
+            continue
+        by_sys_tag.setdefault(tag, []).append({
+            "hash":    row["hash"],
+            "s3_key":  row["s3_key"],
+            "thumb":   row["thumb_key"],
+            "dt":      row["datetime_taken"],
+            "lat":     row["lat"],
+            "lng":     row["lng"],
+            "country": row["country"],
+            "city":    row["city"],
+            "folder":  row["general_folder"],
+            "path":    row["current_path"],
+            "w":       row["width"],
+            "h":       row["height"],
+            "video_proxy": row["video_proxy_key"],
+        })
+
+    sys_tag_index: dict = {"updated": datetime.now().isoformat(), "tags": {}}
+    for tag_name, photos in by_sys_tag.items():
+        photos.sort(key=lambda p: p["dt"] or "")
+        slug = re.sub(r"[^\w\-]", "_", tag_name)
+        _put_index(s3, f"index/sys/{slug}.json", photos, dry_run)
+        sys_tag_index["tags"][tag_name] = {"count": len(photos), "slug": slug}
+
+    # Special "Videos" system tag — all video files across all folders
+    video_rows = [r for r in active if r["media_type"] == "video"]
+    if video_rows:
+        video_photos = [{
+            "hash":    r["hash"],
+            "s3_key":  r["s3_key"],
+            "thumb":   r["thumb_key"],
+            "dt":      r["datetime_taken"],
+            "lat":     r["lat"],
+            "lng":     r["lng"],
+            "country": r["country"],
+            "city":    r["city"],
+            "folder":  r["general_folder"],
+            "path":    r["current_path"],
+            "w":       r["width"],
+            "h":       r["height"],
+            "video_proxy": r["video_proxy_key"],
+        } for r in video_rows]
+        video_photos.sort(key=lambda p: p["dt"] or "")
+        _put_index(s3, "index/sys/Videos.json", video_photos, dry_run)
+        sys_tag_index["tags"]["Videos"] = {"count": len(video_photos), "slug": "Videos"}
+
+    _put_index(s3, "index/tags/system.json", sys_tag_index, dry_run)
+
     log.info(f"Index: {len(by_year)} year files, {len(by_location)} location files, "
              f"{len(by_folder)} general files, {len(recent_photos)} recent, "
-             f"{len(by_month)} monthly stats")
+             f"{len(by_month)} monthly stats, {len(by_sys_tag)} system tags, "
+             f"{len(video_rows) if video_rows else 0} videos, "
+             f"{len(private_hashes)} private hashes")
 
 
 def _put_index(s3, key: str, data, dry_run: bool):
@@ -822,7 +1118,8 @@ def _put_index(s3, key: str, data, dry_run: bool):
 def process_photo(args) -> dict:
     """Worker function for ThreadPoolExecutor: process one new/moved photo."""
     file_hash, path, meta, s3, dry_run = args
-    result = {"hash": file_hash, "ok": False, "moved": False, "error": None}
+    result = {"hash": file_hash, "ok": False, "moved": False, "error": None,
+              "video_proxy_key": None}
 
     try:
         # Thumbnail
@@ -834,7 +1131,15 @@ def process_photo(args) -> dict:
         # Photo upload
         s3_key = upload_photo(s3, path, file_hash, dry_run)
 
-        result.update({"ok": True, "s3_key": s3_key, "thumb_key": thumb_key})
+        # Video proxy: transcode non-MP4 formats to H.264 MP4
+        video_proxy_key = None
+        if path.suffix.lower() in NON_MP4_VIDEO_EXTS:
+            proxy_bytes = transcode_to_mp4(path)
+            if proxy_bytes:
+                video_proxy_key = upload_video_proxy(s3, proxy_bytes, file_hash, dry_run)
+
+        result.update({"ok": True, "s3_key": s3_key, "thumb_key": thumb_key,
+                        "video_proxy_key": video_proxy_key})
     except Exception as e:
         result["error"] = str(e)
 
@@ -871,6 +1176,42 @@ def _fix_dates(db: sqlite3.Connection, dry_run: bool):
              f"({len(rows) - updated:,} still have no date)")
 
 
+def _fix_geo(db: sqlite3.Connection, dry_run: bool):
+    """Re-classify Latinoamerica, Asia, and Europa records without a disk scan."""
+    rows = db.execute("""
+        SELECT hash, current_path, lat, lng FROM photos
+        WHERE (current_path LIKE 'Camera/Latinoamerica/%'
+               OR current_path LIKE 'Camera/Asia/%'
+               OR current_path LIKE 'Camera/Europa/%'
+               OR current_path LIKE 'Camera/Norteamerica/%')
+          AND status = 'active'
+    """).fetchall()
+    log.info(f"Re-classifying {len(rows):,} Latinoamerica/Asia/Europa records …")
+    batch = []
+    for row in rows:
+        cls = classify_path(row["current_path"])
+        lat, lng = row["lat"], row["lng"]
+        if lat is None and cls["type"] == "geo":
+            lat, lng = geocode(db, cls.get("city"), cls.get("country"))
+        batch.append((
+            cls.get("continent") if cls["type"] == "geo" else None,
+            cls.get("country")   if cls["type"] == "geo" else None,
+            cls.get("city")      if cls["type"] == "geo" else None,
+            cls.get("folder")    if cls["type"] == "general" else None,
+            lat, lng,
+            datetime.now().isoformat(),
+            row["hash"],
+        ))
+    if batch and not dry_run:
+        db.executemany(
+            """UPDATE photos SET continent=?, country=?, city=?, general_folder=?,
+               lat=?, lng=?, updated_at=? WHERE hash=?""",
+            batch,
+        )
+        db.commit()
+    log.info(f"  Done — {len(batch):,} records updated")
+
+
 def run(args):
     db = open_db()
     s3 = boto3.client("s3", region_name=REGION)
@@ -881,6 +1222,11 @@ def run(args):
 
     if args.fix_dates:
         _fix_dates(db, args.dry_run)
+        build_and_upload_index(db, s3, args.dry_run)
+        return
+
+    if args.fix_geo:
+        _fix_geo(db, args.dry_run)
         build_and_upload_index(db, s3, args.dry_run)
         return
 
@@ -902,23 +1248,171 @@ def run(args):
              f"Deleted: {len(deleted_hashes):,}  |  Unchanged: "
              f"{len(local) - len(new_hashes) - len(moved_hashes):,}")
 
-    # ── 3. Handle moves (no re-upload needed, just update DB + index path) ────
+    # ── 2b. Resurrect deleted records found back on disk ─────────────────────
+    resurrected_hashes = [h for h in local if h in db_rows and db_rows[h]["status"] == "deleted"]
+    if resurrected_hashes:
+        log.info(f"Resurrecting {len(resurrected_hashes):,} previously-deleted files found on disk …")
+        if not args.dry_run:
+            now_iso = datetime.now().isoformat()
+            batch = []
+            for h in resurrected_hashes:
+                new_rel = str(local[h].relative_to(args.root))
+                cls = classify_path(new_rel)
+                batch.append((
+                    new_rel, local[h].name,
+                    cls.get("continent") if cls["type"] == "geo" else None,
+                    cls.get("country")   if cls["type"] == "geo" else None,
+                    cls.get("city")      if cls["type"] == "geo" else None,
+                    cls.get("folder")    if cls["type"] == "general" else None,
+                    now_iso, h,
+                ))
+            db.executemany(
+                """UPDATE photos SET status='active', current_path=?, filename=?,
+                   continent=?, country=?, city=?, general_folder=?,
+                   s3_uploaded=0, updated_at=? WHERE hash=?""",
+                batch,
+            )
+            db.commit()
+        # Add to new_hashes so they get re-uploaded in step 7
+        new_hashes.extend(resurrected_hashes)
+        log.info(f"  Resurrected {len(resurrected_hashes):,} files (queued for re-upload to S3)")
+
+    # ── 3. Handle moves (no re-upload needed; re-classify geo when path changes) ─
     for h in moved_hashes:
-        new_rel = str(local[h].relative_to(args.root))
+        new_rel  = str(local[h].relative_to(args.root))
         old_path = db_active[h]["current_path"]
         log.info(f"Moved {h[:8]}…  {old_path}  →  {new_rel}")
         if not args.dry_run:
+            cls = classify_path(new_rel)
+            lat = db_active[h]["lat"]
+            lng = db_active[h]["lng"]
+            if lat is None and cls["type"] == "geo":
+                lat, lng = geocode(db, cls.get("city"), cls.get("country"))
             db.execute(
-                "UPDATE photos SET current_path=?, filename=?, updated_at=? WHERE hash=?",
-                (new_rel, local[h].name, datetime.now().isoformat(), h)
+                """UPDATE photos SET current_path=?, filename=?,
+                   continent=?, country=?, city=?, general_folder=?,
+                   lat=?, lng=?, updated_at=? WHERE hash=?""",
+                (new_rel, local[h].name,
+                 cls.get("continent") if cls["type"] == "geo" else None,
+                 cls.get("country")   if cls["type"] == "geo" else None,
+                 cls.get("city")      if cls["type"] == "geo" else None,
+                 cls.get("folder")    if cls["type"] == "general" else None,
+                 lat, lng,
+                 datetime.now().isoformat(), h)
             )
     if moved_hashes and not args.dry_run:
         db.commit()
 
-    # ── 4. Handle deletions ───────────────────────────────────────────────────
-    if deleted_hashes:
-        log.info(f"Marking {len(deleted_hashes):,} files as deleted")
+    # ── 3b. Re-classify existing .Amigos / .Whatsapp records ─────────────────
+    # Photos already in DB under these roots may have old "general" classification.
+    amigos_rows = db.execute(
+        "SELECT hash, current_path, lat, lng FROM photos "
+        "WHERE status='active' AND (current_path LIKE '.Amigos/%' OR current_path LIKE '.Whatsapp/%')"
+    ).fetchall()
+    if amigos_rows:
+        log.info(f"Re-classifying {len(amigos_rows):,} .Amigos/.Whatsapp photos …")
+        batch = []
+        for row in amigos_rows:
+            cls = classify_path(row["current_path"])
+            lat, lng = row["lat"], row["lng"]
+            if lat is None and cls["type"] == "geo":
+                lat, lng = geocode(db, cls.get("city"), cls.get("country"))
+            batch.append((
+                cls.get("continent") if cls["type"] == "geo" else None,
+                cls.get("country")   if cls["type"] == "geo" else None,
+                cls.get("city")      if cls["type"] == "geo" else None,
+                cls.get("folder")    if cls["type"] == "general" else None,
+                lat, lng,
+                datetime.now().isoformat(),
+                row["hash"],
+            ))
         if not args.dry_run:
+            db.executemany(
+                """UPDATE photos SET continent=?, country=?, city=?, general_folder=?,
+                   lat=?, lng=?, updated_at=? WHERE hash=?""",
+                batch,
+            )
+            db.commit()
+
+    # ── 3c. Re-classify existing Camera/Europa/Visitas records ───────────────
+    visitas_rows = db.execute(
+        "SELECT hash, current_path, lat, lng FROM photos "
+        "WHERE status='active' AND current_path LIKE 'Camera/Europa/Visitas/%'"
+    ).fetchall()
+    if visitas_rows:
+        log.info(f"Re-classifying {len(visitas_rows):,} Visitas photos …")
+        batch = []
+        for row in visitas_rows:
+            cls = classify_path(row["current_path"])
+            lat, lng = row["lat"], row["lng"]
+            if lat is None and cls["type"] == "geo":
+                lat, lng = geocode(db, cls.get("city"), cls.get("country"))
+            batch.append((
+                cls.get("continent") if cls["type"] == "geo" else None,
+                cls.get("country")   if cls["type"] == "geo" else None,
+                cls.get("city")      if cls["type"] == "geo" else None,
+                cls.get("folder")    if cls["type"] == "general" else None,
+                lat, lng,
+                datetime.now().isoformat(),
+                row["hash"],
+            ))
+        if not args.dry_run:
+            db.executemany(
+                """UPDATE photos SET continent=?, country=?, city=?, general_folder=?,
+                   lat=?, lng=?, updated_at=? WHERE hash=?""",
+                batch,
+            )
+            db.commit()
+
+    # ── 3d. Transcode existing non-MP4 videos that lack a proxy ──────────────
+    proxy_needed_rows = db.execute(
+        "SELECT hash, current_path FROM photos "
+        "WHERE status='active' AND s3_uploaded=1 AND video_proxy_key IS NULL"
+    ).fetchall()
+    proxy_needed = [
+        r for r in proxy_needed_rows
+        if Path(r["current_path"]).suffix.lower() in NON_MP4_VIDEO_EXTS
+    ]
+    if proxy_needed:
+        log.info(f"Transcoding {len(proxy_needed):,} non-MP4 videos to H.264 MP4 …")
+        proxy_ok = proxy_fail = 0
+        for row in proxy_needed:
+            source = args.root / row["current_path"]
+            if not source.exists():
+                log.debug(f"Source missing for proxy: {source}")
+                continue
+            proxy_bytes = transcode_to_mp4(source)
+            if proxy_bytes:
+                pkey = upload_video_proxy(s3, proxy_bytes, row["hash"], args.dry_run)
+                if pkey and not args.dry_run:
+                    db.execute(
+                        "UPDATE photos SET video_proxy_key=?, updated_at=? WHERE hash=?",
+                        (pkey, datetime.now().isoformat(), row["hash"])
+                    )
+                proxy_ok += 1
+            else:
+                proxy_fail += 1
+        if not args.dry_run:
+            db.commit()
+        log.info(f"  Proxy transcoding: {proxy_ok} ok, {proxy_fail} failed")
+
+    # ── 4. Handle deletions — mark in DB and delete from S3 ──────────────────
+    if deleted_hashes:
+        log.info(f"Deleting {len(deleted_hashes):,} files (no longer on disk) …")
+        if not args.dry_run:
+            del_ok = del_fail = 0
+            for h in deleted_hashes:
+                row = db_active[h]
+                for key in (row["s3_key"], row["thumb_key"]):
+                    if not key:
+                        continue
+                    try:
+                        s3.delete_object(Bucket=BUCKET, Key=key)
+                        del_ok += 1
+                    except Exception as e:
+                        log.warning(f"S3 delete failed {key}: {e}")
+                        del_fail += 1
+            log.info(f"  S3 deletions: {del_ok} ok, {del_fail} failed")
             db.executemany(
                 "UPDATE photos SET status='deleted', updated_at=? WHERE hash=?",
                 [(datetime.now().isoformat(), h) for h in deleted_hashes]
@@ -1054,10 +1548,11 @@ def run(args):
                         db.execute(
                             """UPDATE photos SET s3_key=?, thumb_key=?,
                                s3_uploaded=1, thumb_uploaded=?,
-                               updated_at=? WHERE hash=?""",
+                               video_proxy_key=?, updated_at=? WHERE hash=?""",
                             (res["s3_key"],
                              res["thumb_key"],
                              1 if res["thumb_key"] else 0,
+                             res["video_proxy_key"],
                              datetime.now().isoformat(), h)
                         )
                 else:
@@ -1100,6 +1595,8 @@ if __name__ == "__main__":
                         help="Rebuild index JSON from DB without scanning")
     parser.add_argument("--fix-dates",   action="store_true",
                         help="Fill missing datetimes from filenames, then reindex")
+    parser.add_argument("--fix-geo",     action="store_true",
+                        help="Re-classify Latinoamerica/Asia records and rebuild index")
     parser.add_argument("--skip-index",   action="store_true",
                         help="Upload photos but skip index rebuild")
     parser.add_argument("--workers",      type=int, default=UPLOAD_WORKERS,

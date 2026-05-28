@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLang }    from '../context/LangContext';
 import { useTags }    from '../context/TagsContext';
+import { usePrivacy } from '../context/PrivacyContext';
 import { useIndex }   from '../hooks/useIndex';
 import { Summary, PhotoEntry } from '../types';
 import PhotoModal     from './PhotoModal';
@@ -18,6 +19,7 @@ function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length
 export default function SlotMachineView() {
   const { tr }   = useLang();
   const tagsCtx  = useTags();
+  const { isOwner, isPhotoPrivate } = usePrivacy();
   const { data: summary } = useIndex<Summary>('index/summary.json');
 
   // ── Photo pool ─────────────────────────────────────────────────────
@@ -31,11 +33,11 @@ export default function SlotMachineView() {
       const r = await fetch(config.indexBase + '/index/time/' + year + '.json');
       if (!r.ok) return;
       const photos = await r.json() as PhotoEntry[];
-      const withThumb = photos.filter(p => p.thumb);
+      const withThumb = photos.filter(p => p.thumb && (isOwner || !isPhotoPrivate(p.hash)));
       poolRef.current = [...poolRef.current, ...withThumb];
       setPoolSize(poolRef.current.length);
     } catch { /* ignore */ }
-  }, []);
+  }, [isOwner, isPhotoPrivate]);
 
   const [poolSize, setPoolSize] = useState(0);  // drives re-render when pool grows
 

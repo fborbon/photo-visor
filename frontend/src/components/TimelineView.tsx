@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useIndex }   from '../hooks/useIndex';
 import { useLang }    from '../context/LangContext';
 import { usePrivacy } from '../context/PrivacyContext';
@@ -10,7 +10,9 @@ interface MonthGroup {
   photos: PhotoEntry[];
 }
 
-export default function TimelineView() {
+interface Props { initialYear?: number; initialMonth?: number; }
+
+export default function TimelineView({ initialYear, initialMonth }: Props) {
   const { tr }                       = useLang();
   const { isOwner, isPhotoPrivate }  = usePrivacy();
   const { data: summary }            = useIndex<Summary>('index/summary.json');
@@ -19,10 +21,21 @@ export default function TimelineView() {
     [summary],
   );
 
-  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const mainRef        = useRef<HTMLDivElement>(null);
+  const mountedRef     = useRef(false);
+
+  const [selectedYear,  setSelectedYear]  = useState<number | null>(initialYear  ?? null);
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(initialMonth ?? null);
+  const [sortOrder,     setSortOrder]     = useState<'asc' | 'desc'>('asc');
+
+  // Reset month when year changes — but not on the initial mount (preserves initialMonth)
+  useEffect(() => {
+    if (!mountedRef.current) { mountedRef.current = true; return; }
+    setSelectedMonth(null);
+  }, [selectedYear]);
 
   const yearKey = selectedYear ? 'index/time/' + selectedYear + '.json' : null;
-  const { data: yearPhotos, loading }   = useIndex<PhotoEntry[]>(yearKey);
+  const { data: yearPhotos, loading } = useIndex<PhotoEntry[]>(yearKey);
 
   const monthGroups: MonthGroup[] = useMemo(() => {
     if (!yearPhotos) return [];
@@ -36,16 +49,19 @@ export default function TimelineView() {
     }
     return Array.from(map.entries())
       .sort((a, b) => a[0] - b[0])
-      .map(([month, photos]) => ({ month, photos }));
-  }, [yearPhotos, isOwner, isPhotoPrivate]);
+      .map(([month, photos]) => ({
+        month,
+        photos: [...photos].sort((a, b) => {
+          const ta = a.dt ?? '';
+          const tb = b.dt ?? '';
+          return sortOrder === 'desc' ? tb.localeCompare(ta) : ta.localeCompare(tb);
+        }),
+      }));
+  }, [yearPhotos, isOwner, isPhotoPrivate, sortOrder]);
 
-  // Refs for each month section – used for scroll-to navigation
-  const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
-
-  const scrollToMonth = (month: number) => {
-    const el = sectionRefs.current[month];
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
+  const activeGroup = selectedMonth !== null
+    ? monthGroups.find(g => g.month === selectedMonth) ?? null
+    : null;
 
   return (
     <div className="timeline-layout">
@@ -65,7 +81,7 @@ export default function TimelineView() {
       </aside>
 
       {/* ── Main content ───────────────────────────────────── */}
-      <div className="timeline-main">
+      <div className="timeline-main" ref={mainRef}>
 
         {!selectedYear && (
           <div className="timeline-hint">{tr.selectYearHint}</div>
@@ -73,14 +89,16 @@ export default function TimelineView() {
 
         {selectedYear && (
           <>
-            {/* Month navigation strip */}
-            {monthGroups.length > 0 && (
+            {loading && <p className="panel-loading">{tr.loading}</p>}
+
+            {/* Month selector strip */}
+            {!loading && monthGroups.length > 0 && (
               <div className="month-strip">
                 {monthGroups.map(g => (
                   <button
                     key={g.month}
-                    className="month-btn"
-                    onClick={() => scrollToMonth(g.month)}
+                    className={'month-btn' + (selectedMonth === g.month ? ' active' : '')}
+                    onClick={() => setSelectedMonth(g.month)}
                   >
                     {g.month ? tr.monthsShort[g.month] : '?'}
                     <span className="month-count">{g.photos.length}</span>
@@ -89,26 +107,42 @@ export default function TimelineView() {
               </div>
             )}
 
-            {loading && <p className="panel-loading">{tr.loading}</p>}
-
-            {/* One section per month */}
-            {!loading && monthGroups.map(g => (
-              <div
-                key={g.month}
-                className="month-section"
-                ref={el => { sectionRefs.current[g.month] = el; }}
-              >
-                <div className="month-section-header">
-                  <span className="month-section-name">
-                    {g.month ? tr.months[g.month] : '?'}
-                  </span>
-                  <span className="month-section-count">
-                    {g.photos.length} {tr.photos}
-                  </span>
+            {/* Sort toggle + photo grid for selected month */}
+            {activeGroup && (
+              <>
+                <div className="timeline-sort-row">
+                  <button
+                    className={'timeline-sort-btn' + (sortOrder === 'asc' ? ' active' : '')}
+                    onClick={() => setSortOrder('asc')}
+                  >↑ Oldest</button>
+                  <button
+                    className={'timeline-sort-btn' + (sortOrder === 'desc' ? ' active' : '')}
+                    onClick={() => setSortOrder('desc')}
+                  >↓ Newest</button>
                 </div>
-                <PhotoGrid photos={g.photos} />
-              </div>
-            ))}
+                <div className="month-section">
+                  <div className="month-section-header">
+                    <span className="month-section-name">
+                      {activeGroup.month ? tr.months[activeGroup.month] : '?'}
+                    </span>
+                    <span className="month-section-count">
+                      {activeGroup.photos.length} {tr.photos}
+                    </span>
+                  </div>
+                  <PhotoGrid photos={activeGroup.photos} />
+                  <div className="back-to-top-wrap">
+                    <button
+                      className="back-to-top-btn"
+                      onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+                    >↑ {tr.backToTop ?? 'Back to top'}</button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {!loading && !selectedMonth && monthGroups.length > 0 && (
+              <div className="timeline-hint">↑ {tr.selectMonthHint ?? 'Select a month'}</div>
+            )}
 
             {!loading && yearPhotos && monthGroups.length === 0 && (
               <p className="panel-loading">{tr.noPhotos}</p>

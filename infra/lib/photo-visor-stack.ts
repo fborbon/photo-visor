@@ -69,6 +69,21 @@ export class PhotoVisorStack extends cdk.Stack {
       ],
     });
 
+    // ─── CloudFront Response Headers Policy (CORS) ───────────────────────────
+    // Allows the Capacitor Android app (origin: https://localhost) and the web
+    // app to fetch index files, thumbnails and photos from CloudFront.
+
+    const corsHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'CorsHeadersPolicy', {
+      responseHeadersPolicyName: 'photo-visor-cors',
+      corsBehavior: {
+        accessControlAllowOrigins:     ['*'],
+        accessControlAllowHeaders:     ['*'],
+        accessControlAllowMethods:     ['GET', 'HEAD'],
+        accessControlAllowCredentials: false,
+        originOverride:                true,
+      },
+    });
+
     // ─── CloudFront Cache Policies ────────────────────────────────────────────
 
     // SPA assets: long-lived, content-hashed filenames handle invalidation.
@@ -119,6 +134,7 @@ export class PhotoVisorStack extends cdk.Stack {
         origin: s3Origin,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: appCachePolicy,
+        responseHeadersPolicy: corsHeadersPolicy,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         compress: true,
       },
@@ -128,20 +144,23 @@ export class PhotoVisorStack extends cdk.Stack {
           origin: s3Origin,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: thumbsCachePolicy,
+          responseHeadersPolicy: corsHeadersPolicy,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
-          compress: false, // JPEGs don't compress further
+          compress: false,
         },
         'index/*': {
           origin: s3Origin,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: indexCachePolicy,
+          responseHeadersPolicy: corsHeadersPolicy,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
-          compress: true, // JSON compresses very well
+          compress: true,
         },
         'photos/*': {
           origin: s3Origin,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: photosCachePolicy,
+          responseHeadersPolicy: corsHeadersPolicy,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
           compress: false,
         },

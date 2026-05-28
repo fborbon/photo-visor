@@ -10,8 +10,12 @@ export interface PhotoEntry {
   country?: string;
   city?:   string;
   folder?: string;
+  path?:   string;          // relative path on hard drive e.g. "Camera/Europa/España/..."
   month?:  number;
   day?:    number;
+  make?:   string;          // EXIF camera make e.g. "Samsung"
+  model?:  string;          // EXIF camera model e.g. "SM-A326B"
+  video_proxy?: string | null;  // S3 key for H.264 MP4 proxy of non-MP4 videos
 }
 
 export interface LocationSummary {
@@ -31,7 +35,7 @@ export interface Summary {
   general_folders: string[];
 }
 
-export type Tab = 'map' | 'timeline' | 'tags' | 'upload' | 'latest' | 'slots' | 'stats';
+export type Tab = 'map' | 'timeline' | 'tags' | 'upload' | 'latest' | 'slots' | 'stats' | 'sync' | 'trash';
 
 export interface MonthStat { ym: string; count: number; }
 export interface StatsIndex {
@@ -72,4 +76,14 @@ export interface SharedTagEntry extends TagEntry {
 export interface SharedTags {
   updated: string;
   tags:    Record<string, SharedTagEntry>;
+}
+
+export interface SystemTagMeta {
+  count: number;
+  slug:  string;
+}
+
+export interface SystemTagIndex {
+  updated: string;
+  tags:    Record<string, SystemTagMeta>;
 }

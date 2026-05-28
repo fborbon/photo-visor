@@ -1,18 +1,21 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { PhotoEntry } from '../types';
 import { usePrivacy }      from '../context/PrivacyContext';
 import { useTags }         from '../context/TagsContext';
+import { useTrash }        from '../context/TrashContext';
 import { useLang }         from '../context/LangContext';
-import PhotoModal          from './PhotoModal';
+import PhotoModal, { preloadPhoto } from './PhotoModal';
 import ContextMenu, { MenuItem } from './ContextMenu';
 import AddTagModal         from './AddTagModal';
 import AddCommentModal     from './AddCommentModal';
 import config from '../config';
 
 interface Props {
-  photos:    PhotoEntry[];
-  albumKey?: string;
-  title?:    string;
+  photos:         PhotoEntry[];
+  albumKey?:      string;
+  title?:         string;
+  placeFallback?: string;  // shown when photo has no valid city/country
 }
 
 interface MenuState { x: number; y: number; forSelection: boolean; singlePhoto: PhotoEntry | null; }
@@ -24,32 +27,63 @@ function formatDate(dt: string | null, months: readonly string[]): string {
   return String(d.getDate()).padStart(2, '0') + '/' + months[d.getMonth() + 1] + '/' + d.getFullYear();
 }
 
-function formatPlace(photo: PhotoEntry): string {
-  return [photo.city, photo.country].filter(Boolean).join(', ')
-    || photo.folder?.split('/').pop()
-    || '';
+// Reject values that are clearly not human-readable place names
+function isValidPlace(s: string): boolean {
+  if (!s) return false;
+  if (/^\d+$/.test(s)) return false;          // pure numeric (OSM IDs)
+  if (s.includes('/')) return false;           // folder path
+  if (s.length > 60) return false;             // excessively long
+  if (/^[A-Za-z]+\d+$/.test(s)) return false; // identifier like "Camera1"
+  return true;
+}
+
+function formatPlace(photo: PhotoEntry, fallback = ''): string {
+  const city    = isValidPlace(photo.city    ?? '') ? photo.city    : null;
+  const country = isValidPlace(photo.country ?? '') ? photo.country : null;
+  const parts   = [city, country].filter(Boolean);
+  return parts.length ? parts.join(', ') : fallback;
 }
 
 function commentPreview(text: string, max = 38): string {
   return text.length > max ? text.slice(0, max) + '…' : text;
 }
 
-export default function PhotoGrid({ photos, albumKey, title }: Props) {
+function shortModel(model: string): string {
+  return model.replace(/^SM-/i, '').replace(/^DMC-/i, '').slice(0, 7);
+}
+
+type SortOrder = 'default' | 'oldest' | 'newest';
+
+export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' }: Props) {
   const [modalIdx,     setModalIdx]     = useState<number | null>(null);
   const [selection,    setSelection]    = useState<Set<number>>(new Set());
   const lastClickedRef                  = useRef<number | null>(null);
   const [menu,         setMenu]         = useState<MenuState | null>(null);
   const [addTagTarget, setAddTagTarget] = useState<PhotoEntry[] | null>(null);
   const [commentPhoto, setCommentPhoto] = useState<PhotoEntry | null>(null);
+  const [sortOrder,    setSortOrder]    = useState<SortOrder>('oldest');
 
   const { isOwner, isPhotoPrivate, isAlbumPrivate, togglePhoto } = usePrivacy();
   const { addPhotoToTag, getComment, setComment } = useTags();
+  const { trashPhotos, isTrashed } = useTrash();
   const { tr } = useLang();
 
   const albumPrivate = albumKey ? isAlbumPrivate(albumKey) : false;
-  const visible = photos.filter(p =>
-    isOwner || (!isPhotoPrivate(p.hash) && !albumPrivate)
+  const filtered = photos.filter(p =>
+    !isTrashed(p.hash) &&
+    (isOwner || (!isPhotoPrivate(p.hash) && !albumPrivate))
   );
+  const visible = sortOrder === 'default' ? filtered : [...filtered].sort((a, b) => {
+    const da = a.dt ?? '', db = b.dt ?? '';
+    return sortOrder === 'oldest' ? da.localeCompare(db) : db.localeCompare(da);
+  });
+
+  // Preload prev/next photos whenever the modal index changes
+  useEffect(() => {
+    if (modalIdx === null) return;
+    if (modalIdx > 0)                   preloadPhoto(visible[modalIdx - 1]);
+    if (modalIdx < visible.length - 1)  preloadPhoto(visible[modalIdx + 1]);
+  }, [modalIdx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!visible.length) return null;
 
@@ -134,15 +168,31 @@ export default function PhotoGrid({ photos, albumKey, title }: Props) {
           if (isPhotoPrivate(p.hash)) togglePhoto(p.hash);
         }),
       });
+      items.push({
+        label: '🗑 ' + tr.deletePhoto,
+        onClick: () => { trashPhotos(targets); setSelection(new Set()); setMenu(null); },
+      });
     }
     return items;
   };
 
   return (
     <div className="photo-grid-wrap">
-      {title && <h3 className="grid-title">{title}</h3>}
+      <div className="grid-header">
+        {title && <h3 className="grid-title">{title}</h3>}
+        <div className="grid-sort-btns">
+          <button
+            className={'grid-sort-btn' + (sortOrder === 'oldest' ? ' active' : '')}
+            onClick={() => setSortOrder(s => s === 'oldest' ? 'default' : 'oldest')}
+          >⬆ Oldest</button>
+          <button
+            className={'grid-sort-btn' + (sortOrder === 'newest' ? ' active' : '')}
+            onClick={() => setSortOrder(s => s === 'newest' ? 'default' : 'newest')}
+          >⬇ Newest</button>
+        </div>
+      </div>
 
-      {/* ── Selection toolbar ──────────────────────────────── */}
+      {/* ── Selection toolbar ─────────────────────────────── */}
       {hasSelection && (
         <div className="selection-bar">
           <span className="sel-count">{selection.size} {tr.selected}</span>
@@ -162,6 +212,12 @@ export default function PhotoGrid({ photos, albumKey, title }: Props) {
               </button>
             </>
           )}
+          {isOwner && (
+            <button className="sel-action"
+              onClick={() => { trashPhotos(selectedPhotos()); setSelection(new Set()); }}>
+              🗑 {tr.deletePhoto}
+            </button>
+          )}
           <button className="sel-clear"
             onClick={() => setSelection(new Set())}>
             ✕ {tr.clearSelection}
@@ -173,7 +229,7 @@ export default function PhotoGrid({ photos, albumKey, title }: Props) {
       <div className={'photo-grid' + (hasSelection ? ' has-selection' : '')}>
         {visible.map((p, i) => {
           const locked   = isPhotoPrivate(p.hash) || albumPrivate;
-          const place    = formatPlace(p);
+          const place    = formatPlace(p, placeFallback);
           const dateFmt  = formatDate(p.dt, tr.months);
           const comment  = getComment(p.hash);
           const isSelected = selection.has(i);
@@ -182,7 +238,7 @@ export default function PhotoGrid({ photos, albumKey, title }: Props) {
             <div
               key={p.hash}
               className={'thumb-cell' + (isSelected ? ' selected' : '')}
-              onContextMenu={e => handleContextMenu(e, i)}
+              onContextMenu={Capacitor.isNativePlatform() ? undefined : e => handleContextMenu(e, i)}
             >
               <button
                 className="thumb-btn"
@@ -217,15 +273,38 @@ export default function PhotoGrid({ photos, albumKey, title }: Props) {
                 {locked && <div className="thumb-lock-overlay">🔒</div>}
               </button>
 
-              {isOwner && (
+              <div className="thumb-bottom-left">
                 <button
-                  className={'thumb-privacy-btn' + (locked ? ' is-private' : '')}
-                  title={locked ? tr.makePhotoPublic : tr.makePhotoPrivate}
-                  onClick={e => { e.stopPropagation(); togglePhoto(p.hash); }}
-                >
-                  {locked ? '🔒' : '🔓'}
-                </button>
-              )}
+                  className="thumb-debug-btn"
+                  title="Copy debug info"
+                  onClick={e => {
+                    e.stopPropagation();
+                    const text = `hash: ${p.hash}\npath: ${p.path ?? 'n/a'}`;
+                    navigator.clipboard.writeText(text).catch(() => {});
+                  }}
+                >🔍</button>
+              </div>
+
+              <div className="thumb-bottom-right">
+                {p.model && (
+                  <span
+                    className="thumb-cam-badge"
+                    title={[p.make, p.model].filter(Boolean).join(' ')}
+                  >
+                    {shortModel(p.model)}
+                  </span>
+                )}
+
+                {isOwner && (
+                  <button
+                    className={'thumb-privacy-btn' + (locked ? ' is-private' : '')}
+                    title={locked ? tr.makePhotoPublic : tr.makePhotoPrivate}
+                    onClick={e => { e.stopPropagation(); togglePhoto(p.hash); }}
+                  >
+                    {locked ? '🔒' : '🔓'}
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
