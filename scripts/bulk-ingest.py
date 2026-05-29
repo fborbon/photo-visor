@@ -238,15 +238,21 @@ def scan_local(root: Path, db: sqlite3.Connection) -> dict[str, Path]:
     what is already in the DB, we reuse the stored hash without re-reading
     the file.  This makes re-runs on large collections almost instant.
     """
-    # Build path → (size_bytes, mtime_ns, hash) cache from DB
+    # Build path → (size_bytes, mtime_ns, hash) cache from DB.
+    # mtime_ns may be stored as an ISO string in older records; skip those so
+    # they get re-hashed this run (and their mtime_ns will be repaired below).
     path_cache: dict[str, tuple[int, int, str]] = {}
+    mtime_stale: set[str] = set()   # relative paths with ISO-string mtime_ns
     for row in db.execute(
         "SELECT current_path, size_bytes, mtime_ns, hash FROM photos WHERE status='active'"
     ):
-        if row["mtime_ns"] is not None:
-            path_cache[row["current_path"]] = (
-                row["size_bytes"], row["mtime_ns"], row["hash"]
-            )
+        mns = row["mtime_ns"]
+        if mns is None:
+            continue
+        if isinstance(mns, int):
+            path_cache[row["current_path"]] = (row["size_bytes"], mns, row["hash"])
+        else:
+            mtime_stale.add(row["current_path"])   # ISO-string format — needs repair
 
     all_files = [
         p for p in root.rglob("*")
@@ -260,6 +266,7 @@ def scan_local(root: Path, db: sqlite3.Connection) -> dict[str, Path]:
 
     result: dict[str, Path] = {}
     cached_count = 0
+    mtime_repairs: list[tuple[int, int, str]] = []   # (size, mtime_ns_int, rel_path)
     total = len(all_files)
     bar_fmt = "  Scanning  {n:>7,} / " + f"{total:,}" + "  [{elapsed}<{remaining}  {rate_fmt}]"
 
@@ -276,6 +283,8 @@ def scan_local(root: Path, db: sqlite3.Connection) -> dict[str, Path]:
                 cached_count += 1
             else:
                 h = quick_hash(p, sz)
+                if rel in mtime_stale:
+                    mtime_repairs.append((sz, mns, rel))
 
             if h in result:
                 log.debug(f"Duplicate {h[:8]}…: {result[h].name}  vs  {p.name}")
@@ -285,6 +294,16 @@ def scan_local(root: Path, db: sqlite3.Connection) -> dict[str, Path]:
 
     if cached_count:
         log.info(f"  {cached_count:,} files matched cache (no re-hash needed)")
+
+    # Repair ISO-string mtime_ns → integer for legacy records encountered this run
+    if mtime_repairs:
+        db.executemany(
+            "UPDATE photos SET size_bytes=?, mtime_ns=? WHERE current_path=? AND status='active'",
+            mtime_repairs,
+        )
+        db.commit()
+        log.info(f"  Repaired mtime_ns for {len(mtime_repairs):,} records (ISO→int migration)")
+
     return result
 
 
@@ -431,6 +450,11 @@ def _date_from_folder(folder_name: str) -> tuple[Optional[int], Optional[int]]:
     return year, month
 
 
+_NON_PLACE_SUBFOLDERS = {
+    'calibration', 'city', 'instruments', 'met_mast', 'selfies', 'targets',
+    'wsv1', 'wsv2', 'nokia camera', 'pastelaria pingo doce',
+}
+
 def _system_tag(rel_path: str) -> Optional[str]:
     """
     Derive the system tag from the file path.
@@ -445,18 +469,31 @@ def _system_tag(rel_path: str) -> Optional[str]:
         return None
 
     # .Amigos/{Country} - {City}/{Person}/...  → {country_es}/{city} - {person}
+    # .Amigos/{Country}/{City} - {Person}/...  → {country_es}/{city} - {person}
     if parts[0] == ".Amigos":
         if len(parts) < 4:
             return None
         country_city = parts[1]
-        if " - " not in country_city:
+        if " - " in country_city:
+            # Old format: country and city joined with " - " in parts[1]
+            country_folder, city = country_city.split(" - ", 1)
+            person = parts[2]
+        elif len(parts) >= 4 and " - " in parts[2]:
+            # New format: country in parts[1], city - person in parts[2]
+            country_folder = parts[1]
+            city, person = parts[2].split(" - ", 1)
+        else:
             return None
-        country_folder, city = country_city.split(" - ", 1)
         mapping = _AMIGOS_COUNTRY_MAP.get(country_folder)
         if not mapping:
             return None
         country_es = mapping[0]
-        person = parts[2]
+        # Album subfolder starting with "City - ..." → pin to that trip album (full name)
+        if len(parts) >= 5 and " - " in parts[3]:
+            album_name = parts[3]   # e.g. "Barcelona - Eva - Diciembre 2015"
+            album_city = album_name.split(" - ", 1)[0].strip()
+            if album_city:
+                return f"{country_es}/{album_name}"
         return f"{country_es}/{city} - {person}"
 
     # .Whatsapp/...  → all pinned at Tibás, Costa Rica
@@ -475,12 +512,21 @@ def _system_tag(rel_path: str) -> Optional[str]:
         tag_parts = dir_parts
 
     # Camera/Europa/Visitas/{Trip}/{Country} - {City}/...  → {country_es}/{city} - {trip}
-    if (len(tag_parts) >= 3 and tag_parts[0] == "Visitas"
-            and " - " in tag_parts[2]):
+    # Camera/Europa/Visitas/{Trip}/{PlainCity}/...         → {country_es}/{city}
+    # City-to-country override for non-Spain plain city names:
+    _VISITAS_CITY_COUNTRY = {"Lourdes": "Francia", "Biarritz": "Francia",
+                             "Paris": "Francia", "Lyon": "Francia",
+                             "Lisboa": "Portugal", "Porto": "Portugal"}
+    if len(tag_parts) >= 3 and tag_parts[0] == "Visitas":
         trip = tag_parts[1]
-        country_es, city = tag_parts[2].split(" - ", 1)
-        if country_es in COUNTRY_NORMALIZE:
-            return f"{country_es}/{city} - {trip}"
+        subfolder = tag_parts[2]
+        if " - " in subfolder:
+            country_es, city = subfolder.split(" - ", 1)
+            if country_es in COUNTRY_NORMALIZE:
+                return f"{country_es}/{city} - {trip}"
+        else:
+            country_es = _VISITAS_CITY_COUNTRY.get(subfolder, "España")
+            return f"{country_es}/{subfolder}"
 
     # Camera/Latinoamerica/Costa Rica/{geo_cat}/{city}/...  → "Costa Rica/{city}"
     _CR_GEO_CATS = {"Turismo CR", "Voluntariados",
@@ -503,11 +549,13 @@ def _system_tag(rel_path: str) -> Optional[str]:
                 return f"{country_cand} - {tag_parts[1]}"
             return tag_parts[0]
 
-    # España/Navarra: skip region level; normalize city name so e.g. all
-    # "Alaiz - *" subfolders map to one "España/Alaiz" sys tag.
-    if len(tag_parts) >= 3 and tag_parts[0] == "España" and tag_parts[1] == "Navarra":
-        city_name = _extract_city_token(tag_parts[2]) or tag_parts[2]
-        return f"España/{city_name}"
+    # España: skip region level (Navarra, Asturias, Cataluña, etc.) so each album
+    # gets its own pin using the full subfolder name.
+    # Camera/Europa/España/{Region}/{Subfolder}/ → "España/{Subfolder}"
+    # e.g. España/Cataluña/Barcelona - Agosto 2011 - Vacaciones → "España/Barcelona - Agosto 2011 - Vacaciones"
+    # sysTagCoords then splits by ' - ' to resolve coords when needed.
+    if len(tag_parts) >= 3 and tag_parts[0] == "España":
+        return f"España/{tag_parts[2]}"
 
     # USA/Canada: collapse trip-folder level so each city gets its own pin.
     # Camera/Norteamerica/USA/{trip}/{city}/ → "USA/{city}"
@@ -516,7 +564,32 @@ def _system_tag(rel_path: str) -> Optional[str]:
         city = _extract_city_token(tag_parts[2]) or tag_parts[2]
         return f"USA/{city}"
 
-    return "/".join(tag_parts) if tag_parts else None
+    # Strip person-subfolder level (e.g. "Aryan's pictures") so city pin is correct.
+    # Camera/Europa/Italia/Roma/{person's pictures}/ → "Italia/Roma"
+    if len(tag_parts) >= 3 and tag_parts[2].lower().endswith(" pictures"):
+        return "/".join(tag_parts[:2])
+
+    # Collapse trip-folder level when tag_parts[1] is a "Visit - Description" folder.
+    # Real place sub-folders (Tavira, Lisboa, Belem…) get promoted to city-level tags.
+    # Organisational sub-folders (Calibration, Nokia camera, Site_1…) collapse to parent.
+    # Camera/Europa/Portugal/Cascais - Visita agosto 2008/Tavira/ → "Portugal/Tavira"
+    # Camera/Europa/Alemania/Kassel - Windscanner 1/Site_1/       → "Alemania/Kassel - Windscanner 1"
+    if len(tag_parts) >= 3 and " - " in tag_parts[1]:
+        sub = tag_parts[2]
+        sub_lower = sub.lower()
+        if (re.match(r'^(Parte\s*\d+|\d+)$', sub, re.IGNORECASE)
+                or '_' in sub
+                or sub_lower in _NON_PLACE_SUBFOLDERS
+                or sub_lower.startswith('fotos de ')):
+            return "/".join(tag_parts[:2])
+        return f"{tag_parts[0]}/{sub}"
+
+    if tag_parts:
+        # Normalize folder-spelling variants to the canonical city name
+        _CITY_FOLDER_NORMALIZE = {'Bruges': 'Brugge'}
+        normalized = [tag_parts[0]] + [_CITY_FOLDER_NORMALIZE.get(p, p) for p in tag_parts[1:]]
+        return "/".join(normalized)
+    return None
 
 
 def classify_path(rel_path: str) -> dict:
@@ -540,11 +613,19 @@ def classify_path(rel_path: str) -> dict:
 
     root = parts[0]
 
-    # ── .Amigos: Country - City/Person/Album structure ───────────────────────
+    # ── .Amigos: Country - City/Person/Album  OR  Country/City - Person/Album ──
     if root == ".Amigos":
-        if len(parts) < 4 or " - " not in parts[1]:
+        if len(parts) < 4:
             return {"type": "general", "folder": str(Path(*parts[:-1])).lstrip(".")}
-        country_folder, city = parts[1].split(" - ", 1)
+        if " - " in parts[1]:
+            # Old format: .Amigos/{Country} - {City}/{Person}/...
+            country_folder, city = parts[1].split(" - ", 1)
+        elif len(parts) >= 4 and " - " in parts[2]:
+            # New format: .Amigos/{Country}/{City} - {Person}/...
+            country_folder = parts[1]
+            city = parts[2].split(" - ", 1)[0]
+        else:
+            return {"type": "general", "folder": str(Path(*parts[:-1])).lstrip(".")}
         mapping = _AMIGOS_COUNTRY_MAP.get(country_folder)
         if not mapping:
             return {"type": "general", "folder": str(Path(*parts[:-1])).lstrip(".")}
@@ -1068,7 +1149,8 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
         photos.sort(key=lambda p: p["dt"] or "")
         slug = re.sub(r"[^\w\-]", "_", tag_name)
         _put_index(s3, f"index/sys/{slug}.json", photos, dry_run)
-        sys_tag_index["tags"][tag_name] = {"count": len(photos), "slug": slug}
+        is_public = any(str(p.get("path") or "").startswith("Camera/") for p in photos)
+        sys_tag_index["tags"][tag_name] = {"count": len(photos), "slug": slug, "public": is_public}
 
     # Special "Videos" system tag — all video files across all folders
     video_rows = [r for r in active if r["media_type"] == "video"]
@@ -1099,6 +1181,14 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
              f"{len(by_month)} monthly stats, {len(by_sys_tag)} system tags, "
              f"{len(video_rows) if video_rows else 0} videos, "
              f"{len(private_hashes)} private hashes")
+
+    if not dry_run:
+        try:
+            import gen_coordinates_csv
+            n = gen_coordinates_csv.generate()
+            log.info(f"coordinates.csv updated — {n} rows")
+        except Exception as exc:
+            log.warning(f"coordinates.csv generation failed: {exc}")
 
 
 def _put_index(s3, key: str, data, dry_run: bool):

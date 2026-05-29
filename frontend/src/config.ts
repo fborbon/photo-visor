@@ -12,10 +12,22 @@ const config = {
 
 const EMAIL_DISPLAY_NAMES: Record<string, string> = {
   'correoprincipal2021@hotmail.com': 'Fernando',
+  'ferborbon77@hotmail.com':         'Adrián',
+  'rogui1900@gmail.com':             'Rosibel',
+  'borgui11@gmail.com':              'Katherine',
 };
+
+const FEMALE_EMAILS = new Set([
+  'rogui1900@gmail.com',
+  'borgui11@gmail.com',
+]);
 
 export function displayNameForEmail(email: string): string {
   return EMAIL_DISPLAY_NAMES[email.toLowerCase()] ?? email.split('@')[0] ?? email;
+}
+
+export function isFemaleEmail(email: string): boolean {
+  return FEMALE_EMAILS.has(email.toLowerCase());
 }
 
 export default config;

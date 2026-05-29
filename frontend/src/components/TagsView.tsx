@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useTags }    from '../context/TagsContext';
 import { useLang }    from '../context/LangContext';
+import { usePrivacy } from '../context/PrivacyContext';
 import { useIndex }   from '../hooks/useIndex';
 import { PhotoEntry } from '../types';
 import PhotoGrid from './PhotoGrid';
@@ -17,6 +18,7 @@ const DEFAULT_RAIL = 273;
 export default function TagsView() {
   const { tags, tagNames, sharedTags, sharedTagNames, systemTagIndex, systemTagsLoading, deleteTag, isMySharedTag } = useTags();
   const { lang, tr } = useLang();
+  const { isOwner } = usePrivacy();
   const [sel, setSel] = useState<Selected | null>(null);
   const [sysFilter, setSysFilter] = useState('');
   const [confirmDeleteTag, setConfirmDeleteTag] = useState<{ name: string; shared: boolean } | null>(null);
@@ -80,13 +82,15 @@ export default function TagsView() {
     return groups;
   }, [sharedTagNames, sharedTags]);
 
-  // Filtered system tag names
+  // Filtered system tag names — non-owners only see public (Camera-origin) tags
   const sysTagNames = useMemo(() => {
-    const all = Object.keys(systemTagIndex.tags).sort();
+    const all = Object.keys(systemTagIndex.tags)
+      .filter(n => isOwner || systemTagIndex.tags[n].public)
+      .sort();
     if (!sysFilter.trim()) return all;
     const q = sysFilter.toLowerCase();
     return all.filter(n => n.toLowerCase().includes(q));
-  }, [systemTagIndex, sysFilter]);
+  }, [systemTagIndex, sysFilter, isOwner]);
 
   // Group system tags: country → city → [tagNames]
   const sysTagsByCountry = useMemo(() => {

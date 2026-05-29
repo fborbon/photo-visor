@@ -3,11 +3,12 @@ import { Capacitor } from '@capacitor/core';
 import { Authenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
 import { Tab, Summary } from './types';
-import { displayNameForEmail } from './config';
+import { displayNameForEmail, isFemaleEmail } from './config';
 import { LangProvider, useLang }       from './context/LangContext';
 import { PrivacyProvider, usePrivacy } from './context/PrivacyContext';
 import { TagsProvider }                from './context/TagsContext';
 import { TrashProvider }               from './context/TrashContext';
+import { AnalyticsProvider, useAnalytics } from './context/AnalyticsContext';
 import { useIndex }     from './hooks/useIndex';
 import { useSync }      from './hooks/useSync';
 import MapView          from './components/MapView';
@@ -19,13 +20,8 @@ import SlotMachineView  from './components/SlotMachineView';
 import StatisticsView   from './components/StatisticsView';
 import SyncView         from './components/SyncView';
 import TrashView        from './components/TrashView';
-import DisplayNameModal from './components/DisplayNameModal';
-
+import UsageView        from './components/UsageView';
 const AUTO_SYNC_INTERVAL_MS = 60 * 60 * 1000;
-
-function nameKey(email: string) {
-  return 'pv_name_' + email.toLowerCase().replace(/[^a-z0-9]/g, '_');
-}
 
 interface InnerProps {
   signOut: () => void;
@@ -41,33 +37,18 @@ function AppInner({ signOut, email }: InnerProps) {
   const { status: syncStatus, lastSync, autoSync, setAutoSync, sync, stopSync, fixing, fixResult, markNonCameraPrivate } = useSync(makePhotosPrivate, makePhotosPublic);
   const syncRef = useRef(sync);
   syncRef.current = sync;
+  const { trackEvent } = useAnalytics();
 
   // ── Display name ─────────────────────────────────────────────────
-  const fixedName = email ? displayNameForEmail(email) : undefined;
-  const isFixed   = !!email && fixedName !== email.split('@')[0];
+  const [displayName, setDisplayNameState] = useState(() => displayNameForEmail(email));
+  const welcomeWord = isFemaleEmail(email) ? tr.welcomeFemale : tr.welcome;
 
-  const key = nameKey(email);
-  const [displayName, setDisplayNameState] = useState(() => isFixed ? fixedName! : (localStorage.getItem(key) ?? ''));
-  const [showNameModal, setShowNameModal]   = useState(() => !isFixed && !localStorage.getItem(key));
-
-  // email starts as '' while Amplify hydrates; once the real email resolves,
-  // re-check storage so we don't re-ask for a name the user already provided.
   useEffect(() => {
-    if (!email) return;
-    const fn = displayNameForEmail(email);
-    if (fn !== email.split('@')[0]) { setDisplayNameState(fn); setShowNameModal(false); return; }
-    const stored = localStorage.getItem(nameKey(email));
-    if (stored) {
-      setDisplayNameState(stored);
-      setShowNameModal(false);
-    }
-  }, [email]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (email) setDisplayNameState(displayNameForEmail(email));
+  }, [email]);
 
-  const saveDisplayName = (name: string) => {
-    localStorage.setItem(key, name);
-    setDisplayNameState(name);
-    setShowNameModal(false);
-  };
+  // Track tab switches
+  useEffect(() => { trackEvent('nav_tab', { tab }); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-sync on app resume
   useEffect(() => {
@@ -96,6 +77,10 @@ function AppInner({ signOut, email }: InnerProps) {
         <span className="topbar-logo">
           <span style={{ color: '#ff0084' }}>foto</span>visor
         </span>
+
+        {displayName && (
+          <span className="topbar-welcome">{welcomeWord} {displayName}!</span>
+        )}
 
         <nav className="tab-nav">
           <button className={'tab-btn' + (tab === 'map'      ? ' active' : '')} onClick={() => setTab('map')}>
@@ -134,6 +119,11 @@ function AppInner({ signOut, email }: InnerProps) {
               🗑 {tr.tabTrash}
             </button>
           )}
+          {isOwner && (
+            <button className={'tab-btn' + (tab === 'usage'  ? ' active' : '')} onClick={() => setTab('usage')}>
+              📈 {tr.tabUsage}
+            </button>
+          )}
         </nav>
 
         <div className="topbar-right">
@@ -148,7 +138,7 @@ function AppInner({ signOut, email }: InnerProps) {
       <main className="main-content">
         <TagsProvider>
           <TrashProvider>
-            {tab === 'map'      && <MapView />}
+            {tab === 'map'      && <MapView displayName={displayName ? `${welcomeWord} ${displayName}!` : undefined} />}
             {tab === 'timeline' && <TimelineView initialYear={timelineNav?.year} initialMonth={timelineNav?.month} />}
             {tab === 'tags'     && <TagsView />}
             {tab === 'latest'   && <LatestView />}
@@ -156,6 +146,7 @@ function AppInner({ signOut, email }: InnerProps) {
             {tab === 'stats'    && <StatisticsView onNavigate={(year, month) => { setTimelineNav({ year, month }); setTab('timeline'); }} />}
             {tab === 'upload'   && <UploadView />}
             {tab === 'trash'    && <TrashView />}
+            {tab === 'usage'    && isOwner && <UsageView />}
             {tab === 'sync'     && (
               <SyncView
                 status={syncStatus}
@@ -179,7 +170,6 @@ function AppInner({ signOut, email }: InnerProps) {
         </footer>
       )}
 
-      {showNameModal && <DisplayNameModal onSave={saveDisplayName} />}
 
     </div>
   );
@@ -188,12 +178,14 @@ function AppInner({ signOut, email }: InnerProps) {
 function Shell() {
   return (
     <Authenticator hideSignUp>
-      {({ signOut, user }) => (
-        <AppInner
-          signOut={signOut ?? (() => {})}
-          email={user?.signInDetails?.loginId ?? ''}
-        />
-      )}
+      {({ signOut, user }) => {
+        const email = user?.signInDetails?.loginId ?? '';
+        return (
+          <AnalyticsProvider userId={email}>
+            <AppInner signOut={signOut ?? (() => {})} email={email} />
+          </AnalyticsProvider>
+        );
+      }}
     </Authenticator>
   );
 }

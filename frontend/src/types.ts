@@ -35,7 +35,7 @@ export interface Summary {
   general_folders: string[];
 }
 
-export type Tab = 'map' | 'timeline' | 'tags' | 'upload' | 'latest' | 'slots' | 'stats' | 'sync' | 'trash';
+export type Tab = 'map' | 'timeline' | 'tags' | 'upload' | 'latest' | 'slots' | 'stats' | 'sync' | 'trash' | 'usage';
 
 export interface MonthStat { ym: string; count: number; }
 export interface StatsIndex {
@@ -79,8 +79,9 @@ export interface SharedTags {
 }
 
 export interface SystemTagMeta {
-  count: number;
-  slug:  string;
+  count:  number;
+  slug:   string;
+  public?: boolean;  // true = Camera/ origin (visible to all); false/absent = .Amigos/.Whatsapp (owner only)
 }
 
 export interface SystemTagIndex {

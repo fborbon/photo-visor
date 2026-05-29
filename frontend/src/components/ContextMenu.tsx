@@ -17,15 +17,19 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const close = (e: MouseEvent | KeyboardEvent) => {
-      if ('key' in e && e.key !== 'Escape') return;
-      if ('key' in e || !ref.current?.contains(e.target as Node)) onClose();
+    const closePointer = (e: MouseEvent | TouchEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
     };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown',   close);
+    const closeKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown',  closePointer);
+    document.addEventListener('touchstart', closePointer, { passive: true });
+    document.addEventListener('keydown',    closeKey);
     return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown',   close);
+      document.removeEventListener('mousedown',  closePointer);
+      document.removeEventListener('touchstart', closePointer);
+      document.removeEventListener('keydown',    closeKey);
     };
   }, [onClose]);
 

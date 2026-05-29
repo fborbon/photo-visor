@@ -5,6 +5,7 @@ import { usePrivacy }      from '../context/PrivacyContext';
 import { useTags }         from '../context/TagsContext';
 import { useTrash }        from '../context/TrashContext';
 import { useLang }         from '../context/LangContext';
+import { useAnalytics }    from '../context/AnalyticsContext';
 import PhotoModal, { preloadPhoto } from './PhotoModal';
 import ContextMenu, { MenuItem } from './ContextMenu';
 import AddTagModal         from './AddTagModal';
@@ -59,6 +60,9 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
   const [selection,    setSelection]    = useState<Set<number>>(new Set());
   const lastClickedRef                  = useRef<number | null>(null);
   const [menu,         setMenu]         = useState<MenuState | null>(null);
+  const longPressTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressPos     = useRef<{ x: number; y: number } | null>(null);
+  const longPressDidFire = useRef(false);
   const [addTagTarget, setAddTagTarget] = useState<PhotoEntry[] | null>(null);
   const [commentPhoto, setCommentPhoto] = useState<PhotoEntry | null>(null);
   const [sortOrder,    setSortOrder]    = useState<SortOrder>('oldest');
@@ -67,6 +71,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
   const { addPhotoToTag, getComment, setComment } = useTags();
   const { trashPhotos, isTrashed } = useTrash();
   const { tr } = useLang();
+  const { trackEvent } = useAnalytics();
 
   const albumPrivate = albumKey ? isAlbumPrivate(albumKey) : false;
   const filtered = photos.filter(p =>
@@ -78,9 +83,16 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
     return sortOrder === 'oldest' ? da.localeCompare(db) : db.localeCompare(da);
   });
 
-  // Preload prev/next photos whenever the modal index changes
+  // Track album view on mount / albumKey change
+  useEffect(() => {
+    if (albumKey) trackEvent('view_album', { albumKey, albumTitle: title ?? albumKey });
+  }, [albumKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track photo views and preload neighbors
   useEffect(() => {
     if (modalIdx === null) return;
+    const p = visible[modalIdx];
+    if (p) trackEvent('view_photo', { albumKey: albumKey ?? '', albumTitle: title ?? albumKey ?? '' });
     if (modalIdx > 0)                   preloadPhoto(visible[modalIdx - 1]);
     if (modalIdx < visible.length - 1)  preloadPhoto(visible[modalIdx + 1]);
   }, [modalIdx]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -92,6 +104,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
 
   // ── Click handler with Shift/Ctrl support ────────────────────────
   const handleClick = (e: React.MouseEvent, idx: number) => {
+    if (longPressDidFire.current) { longPressDidFire.current = false; return; }
     const isCtrl  = e.ctrlKey || e.metaKey;
     const isShift = e.shiftKey;
 
@@ -134,6 +147,37 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
       setSelection(new Set());
       lastClickedRef.current = idx;
     }
+  };
+
+  // ── Long-press (mobile) ──────────────────────────────────────────
+  const handleTouchStart = (idx: number) => (e: React.TouchEvent) => {
+    longPressDidFire.current = false;
+    const t = e.touches[0];
+    longPressPos.current = { x: t.clientX, y: t.clientY };
+    longPressTimer.current = setTimeout(() => {
+      longPressTimer.current = null;
+      if (!longPressPos.current) return;
+      longPressDidFire.current = true;
+      const { x, y } = longPressPos.current;
+      const forSelection = hasSelection && selection.has(idx);
+      setMenu({ x, y, forSelection, singlePhoto: forSelection ? null : visible[idx] });
+      if (!forSelection) { setSelection(new Set()); lastClickedRef.current = idx; }
+    }, 600);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!longPressTimer.current || !longPressPos.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - longPressPos.current.x;
+    const dy = t.clientY - longPressPos.current.y;
+    if (dx * dx + dy * dy > 64) {   // moved > ~8 px → treat as scroll
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
   };
 
   const selectedPhotos = (): PhotoEntry[] =>
@@ -239,6 +283,9 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
               key={p.hash}
               className={'thumb-cell' + (isSelected ? ' selected' : '')}
               onContextMenu={Capacitor.isNativePlatform() ? undefined : e => handleContextMenu(e, i)}
+              onTouchStart={Capacitor.isNativePlatform() ? handleTouchStart(i) : undefined}
+              onTouchMove={Capacitor.isNativePlatform() ? handleTouchMove : undefined}
+              onTouchEnd={Capacitor.isNativePlatform() ? handleTouchEnd : undefined}
             >
               <button
                 className="thumb-btn"
@@ -273,17 +320,19 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
                 {locked && <div className="thumb-lock-overlay">🔒</div>}
               </button>
 
-              <div className="thumb-bottom-left">
-                <button
-                  className="thumb-debug-btn"
-                  title="Copy debug info"
-                  onClick={e => {
-                    e.stopPropagation();
-                    const text = `hash: ${p.hash}\npath: ${p.path ?? 'n/a'}`;
-                    navigator.clipboard.writeText(text).catch(() => {});
-                  }}
-                >🔍</button>
-              </div>
+              {isOwner && (
+                <div className="thumb-bottom-left">
+                  <button
+                    className="thumb-debug-btn"
+                    title="Copy debug info"
+                    onClick={e => {
+                      e.stopPropagation();
+                      const text = `hash: ${p.hash}\npath: ${p.path ?? 'n/a'}`;
+                      navigator.clipboard.writeText(text).catch(() => {});
+                    }}
+                  >🔍</button>
+                </div>
+              )}
 
               <div className="thumb-bottom-right">
                 {p.model && (

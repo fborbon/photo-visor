@@ -1,8 +1,9 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { useTags }  from '../context/TagsContext';
-import { useLang }  from '../context/LangContext';
+import { useTags }    from '../context/TagsContext';
+import { useLang }    from '../context/LangContext';
+import { usePrivacy } from '../context/PrivacyContext';
 import { PhotoEntry } from '../types';
 import PhotoGrid from './PhotoGrid';
 import config from '../config';
@@ -48,6 +49,24 @@ const SELECTED_ICON = L.divIcon({
   popupAnchor: [1, -40],
 });
 
+// Leaflet control that shows the welcome greeting 2 rows below the zoom buttons (desktop only).
+function WelcomeControl({ greeting }: { greeting: string }) {
+  const map = useMap();
+  useEffect(() => {
+    const ctrl = new (L.Control.extend({
+      onAdd() {
+        const div = L.DomUtil.create('div', 'map-welcome-ctrl');
+        div.textContent = greeting;
+        L.DomEvent.disableClickPropagation(div);
+        return div;
+      },
+    }))({ position: 'topleft' });
+    ctrl.addTo(map);
+    return () => { ctrl.remove(); };
+  }, [map, greeting]);
+  return null;
+}
+
 // Renders nothing; tells the parent when the Leaflet map has fired its first
 // "load" event (i.e. map._loaded is true). We must not render Markers before
 // that point: addLayer defers onAdd when _loaded is false, which leaves
@@ -66,7 +85,7 @@ interface PanelState {
   fallback: string;
 }
 
-export default function MapView() {
+export default function MapView({ displayName }: { displayName?: string }) {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [panel, setPanel] = useState<PanelState | null>(null);
   const [panelPhotos, setPanelPhotos] = useState<PhotoEntry[] | null>(null);
@@ -97,6 +116,7 @@ export default function MapView() {
 
   const { systemTagIndex } = useTags();
   const { lang, tr } = useLang();
+  const { isOwner } = usePrivacy();
 
   // One marker per sys tag. When multiple tags share the same base coordinate,
   // spread them in a circle so they appear as distinct pins (not merged).
@@ -104,6 +124,7 @@ export default function MapView() {
     type Entry = { lat: number; lng: number; country: string; city: string; slug: string; name: string; count: number; };
     const byLocation = new Map<string, Entry[]>();
     for (const [name, meta] of Object.entries(systemTagIndex.tags)) {
+      if (!isOwner && !meta.public) continue;
       const country = sysTagCountryKey(name);
       const city    = sysTagCityKey(name);
       const coords  = sysTagCoords(country, city);
@@ -147,6 +168,7 @@ export default function MapView() {
           maxBoundsViscosity={1.0}
         >
           <MapReadyGuard onReady={() => setMapLoaded(true)} />
+          {displayName && <WelcomeControl greeting={displayName} />}
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

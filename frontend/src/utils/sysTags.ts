@@ -10,7 +10,18 @@ export const COUNTRY_ALIASES: Record<string, string> = {
 };
 
 export const CITY_ALIASES: Record<string, string> = {
-  'logrono': 'Logroño',
+  'logrono':              'Logroño',
+  'londres':              'London',               // normalize folder spelling
+  'rio urederra':         'Urederra',             // merge Rio Urederra with Urederra → 4-pin circle
+  'alaiz aerial view':    'Alaiz',                // merge Alaiz sub-albums → circle-spread
+  'alaiz desde carretera':'Alaiz',
+  'alaiz visita newa':    'Alaiz',
+  'nacionalidad':         'Madrid',              // nationality ceremony is in Madrid
+  'polideportivo cartago':'Cinco pinos de Cartago', // same Cartago area
+  'brussells':            'Bruselas',            // typo of Brussels
+  'bruges':               'Brugge',              // Flemish/English → canonical
+  'vitoria-gasteiz':      'Vitoria',             // same city, alternate name
+  'milan':                'Milano',              // same city, alternate spelling
 };
 
 export function normalizeCountry(raw: string): string {
@@ -77,7 +88,8 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Alemania:Berlín':     [ 52.5200,   13.4050],
   'Alemania:Dusseldorf': [ 51.2217,    6.7762],
   'Alemania:Düsseldorf': [ 51.2217,    6.7762],
-  'Alemania:Frankfurt':  [ 50.1109,    8.6821],
+  'Alemania:Frankfurt':          [ 50.1109,    8.6821],
+  'Alemania:Frankfurt airport':  [ 50.0379,    8.5622],  // Frankfurt Airport
   'Alemania:Hamburg':    [ 53.5753,   10.0153],
   'Alemania:Hamburgo':   [ 53.5753,   10.0153],
   'Alemania:Kassel':     [ 51.3127,    9.4797],
@@ -86,6 +98,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Alemania:Munich':     [ 48.1351,   11.5820],
   'Alemania:Múnich':     [ 48.1351,   11.5820],
   'Alemania:Braunschweig': [ 52.2689,  10.5268],
+  'Alemania:Toulouse':   [ 43.6047,    1.4442],  // Toulouse trip via Sarah's .Amigos album
   'Alemania:Dortmund':   [ 51.5136,    7.4653],
   'Alemania:Stuttgart':  [ 48.7758,    9.1829],
   'Alemania:Vallendar':  [ 50.4028,    7.6053],  // small city in Rhineland-Palatinate
@@ -179,7 +192,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   // Many tags are family/personal albums without city info → fallback San José
   'Costa Rica:':                    [  9.9281,  -84.0907],  // San José (capital fallback)
   // Voluntariados
-  'Costa Rica:Cabo Blanco':         [  8.6844,  -85.1017],  // Reserva Absoluta Cabo Blanco, SW Nicoya
+  'Costa Rica:Cabo Blanco':         [  9.5875,  -85.0929],  // Reserva Natural Cabo Blanco, SW Nicoya
   'Costa Rica:Cerro Chirripó':      [  9.4844,  -83.4904],  // highest peak in CR, Chirripó NP
   'Costa Rica:Playa Grande':        [ 10.3197,  -85.8518],  // Playa Grande, Guanacaste (leatherback nesting)
   'Costa Rica:Playa Manuel Antonio': [ 9.3882,  -84.1627],  // Manuel Antonio NP, Quepos
@@ -232,6 +245,11 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Dinamarca:Copenhagen': [55.6761,   12.5683],
   'Dinamarca:Copenhaguen': [55.6761,  12.5683],
   'Dinamarca:Copenhague': [55.6761,   12.5683],
+  'Dinamarca:Høvsøre':                        [ 56.4437,  8.1478],  // Høvsøre, west Jutland
+  'Dinamarca:Høvsøre Wind Turbine Test Center': [ 56.4437,  8.1478],  // full folder name variant
+  'Dinamarca:Legoland':  [ 55.7359,    9.1268],  // Legoland Billund
+  'Dinamarca:Riso':      [ 55.6916,   12.0996],  // Risø DTU, Roskilde
+  'Dinamarca:Riso DTU':  [ 55.6916,   12.0996],  // Risø DTU, Roskilde (full name variant)
 
   // ── Egipto (Egypt) ────────────────────────────────────────────────────
   'Egipto:':             [ 30.0444,   31.2357],  // Cairo (capital fallback)
@@ -259,8 +277,18 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Burgos':       [ 42.3440,   -3.6969],
   'España:Candachú':     [ 42.7984,   -0.5271],  // ski resort, Huesca Pyrenees
   'España:Canet de Berenguer': [39.6797, -0.2215], // coastal town, Valencia
+  'España:Cabárceno':    [ 43.3922,   -3.8028],  // Parque de la Naturaleza, Cantabria
   'España:Castro Urdiales': [43.3830,  -3.2189],  // coastal town, Cantabria
   'España:Cataluña':     [ 41.5912,    1.5209],  // Catalonia region centroid
+  'España:Cadaques':     [ 42.2882,    3.2803],  // Cadaqués, Costa Brava
+  'España:Cadaqués':     [ 42.2882,    3.2803],
+  'España:Figueres':     [ 42.2669,    2.9608],  // Figueres, Alt Empordà
+  'España:Girona':       [ 41.9794,    2.8214],
+  'España:Malgrat de Mar': [41.6474,   2.7461],  // Malgrat de Mar, Maresme coast
+  'España:Ribes de Freser': [42.3073,  2.1702],  // Ribes de Freser, Ripollès
+  'España:Roses':        [ 42.2669,    3.1779],  // Roses, Costa Brava
+  'España:Sabadell':     [ 41.5436,    2.1095],  // Sabadell, Vallès Occidental
+  'España:Sant Cugat de Valles': [41.4722, 2.0844], // Sant Cugat del Vallès
   'España:Cogumelo':     [ 43.2627,   -2.9253],  // Bilbao area
   'España:Cáceres':      [ 39.4753,   -6.3724],
   'España:Córdoba':      [ 37.8882,   -4.7794],
@@ -322,23 +350,23 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Aoiz & Lumbier & Sanguesa': [42.7803, -1.3697], // Aoiz area, Navarra
   'España:Ardanaz':      [ 42.8053,   -1.4972],  // village near Pamplona
   'España:Arellano':     [ 42.5858,   -2.0236],  // village, southern Navarra
-  'España:Arrete':       [ 42.7083,   -1.5583],  // village, Navarra
+  'España:Arrete':       [ 42.9776,   -0.7449],  // La Pierre Saint-Martin ski area, Pyrenees (Navarra/France border)
   'España:Artajona':     [ 42.5974,   -1.7713],  // walled town, Navarra
   'España:Astigarraga':  [ 43.2697,   -1.9278],  // cider town, Gipuzkoa
-  'España:Badostain':    [ 42.8192,   -1.6325],  // village near Pamplona
+  'España:Badostain':    [ 42.7988,   -1.5952],  // Badostáin, Navarre
   'España:Barañain':     [ 42.8153,   -1.6744],  // suburb of Pamplona
   'España:Bardenas Reales': [42.1833,  -1.5167], // desert natural park, Navarra
-  'España:Berroeta':     [ 43.0833,   -1.7500],  // village, Baztan valley
-  'España:Bosque Orgui': [ 42.8167,   -1.6500],  // forest near Pamplona
+  'España:Berroeta':     [ 43.1040,   -1.5907],  // village, Navarra
+  'España:Bosque Orgui': [ 42.9647,   -1.6799],  // Orgi Basoa forest, Navarra
   'España:Casa Baranain y estaciones del ano': [42.8153, -1.6744], // Barañain area
   'España:Briones':      [ 42.5339,   -2.8194],  // wine village, La Rioja
   'España:Burgui':       [ 42.7750,   -0.8981],  // Roncal valley, Navarra
   'España:Castillo Javier': [42.5893,  -1.2081], // castle, Navarra (Javier)
   'España:Cuevas de Zugaramundi': [43.2697, -1.5289],  // caves, Navarra/Basque border
-  'España:Echauri':      [ 42.7894,   -1.6919],  // village near Pamplona
+  'España:Echauri':      [ 42.7944,   -1.7898],  // Etxauri/Echauri village, Navarre
   'España:Eguino':       [ 42.9167,   -2.0833],  // village, Navarra/Álava border
   'España:Elizondo':     [ 43.1414,   -1.5131],  // capital of Baztan valley
-  'España:Etxauri':      [ 42.7922,   -1.6997],  // village near Pamplona
+  'España:Etxauri':      [ 42.8010,   -1.8461],  // Ermita Santa Cruz, Etxauri, Navarre
   'España:Eugui':        [ 42.9972,   -1.5478],  // village and reservoir, Navarra
   'España:Foz de Arbayun': [42.6561,  -1.2733],  // gorge natural reserve, Navarra
   'España:Foz de Lumbier': [42.6533,  -1.3050],  // gorge near Lumbier, Navarra
@@ -354,7 +382,8 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Petilla de Aragon': [42.4556, -1.0800], // enclave village, Navarra
   'España:Puente de la Reina': [42.6722, -1.8111], // pilgrim town, Navarra
   'España:Puente La Reina': [42.6722,  -1.8111],  // same town, alternate folder name
-  'España:Pueyo':        [ 42.7450,   -1.6583],  // village near Pamplona
+  'España:Pueyo':        [ 42.5667,   -1.6475],  // Pueyo, Navarra
+  'España:Ribadesella':  [ 43.4614,   -5.0606],  // coastal town, Asturias (Descenso del Sella)
   'España:Roncesvalles': [ 43.0092,   -1.3194],  // historic pass and monastery
   'España:San Fermin':   [ 42.8166,   -1.6434],  // San Fermín festival (Pamplona)
   'España:Sanguesa':     [ 42.5700,   -1.2817],  // town, eastern Navarra
@@ -364,8 +393,9 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Tiermas':      [ 42.6028,   -1.0406],  // submerged village, Aragon/Navarra
   'España:Tudela':       [ 42.0600,   -1.6056],  // city, Ribera Navarra
   'España:Txindoki':     [ 43.0667,   -2.1500],  // peak, Gipuzkoa/Navarra
-  'España:Unciti':       [ 42.7667,   -1.5833],  // village, Navarra
-  'España:Urederra':     [ 42.7500,   -2.0167],  // natural park, Navarra
+  'España:Unciti':       [ 42.7476,   -1.5012],  // Unciti, Navarre
+  'España:Urederra':     [ 42.7282,   -2.0843],  // Nacedero del Urederra natural park, Navarra
+  'España:Rio Urederra': [ 42.7282,   -2.0843],  // alternate name for Urederra
   'España:Numancia':     [ 41.8156,   -2.4394],  // archaeological site near Soria
   'España:Pamplona':     [ 42.8733,   -1.5911],  // pinned at Olloki (Iza valley)
   'España:Panticosa':    [ 42.7333,   -0.2833],  // ski resort, Huesca Pyrenees
@@ -396,9 +426,12 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
 
   // ── Francia (France) ─────────────────────────────────────────────────
   'Francia:':            [ 48.8566,    2.3522],  // Paris (capital fallback)
+  'Francia:Biarritz':    [ 43.4831,   -1.5586],  // Biarritz, Basque coast
   'Francia:Bordeaux':    [ 44.8378,   -0.5792],
   'Francia:Carcassonne': [ 43.2130,    2.3491],
-  'Francia:Lourdes_Bayona_Biarritz': [43.0956, -0.0463], // Lourdes / Bayonne / Biarritz area
+  'Francia:Chartres':    [ 48.4469,    1.4891],  // Chartres, Eure-et-Loir
+  'Francia:Lourdes':     [ 43.0956,   -0.0463],  // Lourdes, France
+  'Francia:Lourdes_Bayona_Biarritz': [43.0956, -0.0463], // Lourdes / Bayonne / Biarritz area (legacy key)
   'Francia:Lyon':        [ 45.7640,    4.8357],
   'Francia:Marsella':    [ 43.2965,    5.3698],
   'Francia:Nice':        [ 43.7102,    7.2620],
@@ -469,6 +502,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Noruega:':            [ 59.9139,   10.7522],  // Oslo (capital fallback)
   'Noruega:Smola':       [ 63.3667,    8.0000],  // Smøla island, wind energy site
   'Noruega:Trondheim':   [ 63.4305,   10.3951],
+  "Noruega:Daniel's":    [ 63.4305,   10.3951],  // Trondheim (folder named after person)
 
   // ── Paises Balticos (Baltic + Nordic countries, mixed in one folder) ──
   'Paises Balticos:':    [ 59.4370,   24.7536],  // Tallinn (fallback)
@@ -486,9 +520,15 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
 
   // ── Polonia (Poland) ──────────────────────────────────────────────────
   'Polonia:':            [ 52.2297,   21.0122],  // Warsaw (capital fallback)
+  'Polonia:Auschwitz':   [ 50.0264,   19.2040],  // Auschwitz-Birkenau, Oświęcim
+  'Polonia:Kraków':      [ 50.0647,   19.9450],  // Kraków
+  'Polonia:Krakow':      [ 50.0647,   19.9450],  // Kraków (no diacritic variant)
+  'Polonia:Wrocław':     [ 51.1079,   17.0385],  // Wrocław
+  'Polonia:Wroclaw':     [ 51.1079,   17.0385],  // Wrocław (no diacritic variant)
 
   // ── Portugal ──────────────────────────────────────────────────────────
   'Portugal:':           [ 38.7223,   -9.1393],  // Lisbon (capital fallback)
+  'Portugal:Belem':      [ 38.6974,   -9.2064],  // Belém district, Lisbon
   'Portugal:Cascais':    [ 38.6969,   -9.4227],  // coastal town near Lisbon
   'Portugal:Coimbra':    [ 40.2033,   -8.4103],
   'Portugal:Fatima':     [ 39.6341,   -8.6735],  // Fátima, pilgrimage city
@@ -502,6 +542,13 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Portugal:Peniche_Nazare': [39.4000, -9.1500], // Peniche & Nazaré, Atlantic coast
   'Portugal:Perdigao':   [ 39.7143,   -7.7517],  // Perdigão wind farm, central Portugal
   'Portugal:Sintra':     [ 38.8029,   -9.3817],  // Sintra, UNESCO heritage near Lisbon
+  'Portugal:Ericeira':   [ 38.9681,   -9.4073],  // Ericeira, surf town north of Lisbon
+  'Portugal:Tavira':     [ 37.1242,   -7.6513],  // Tavira, eastern Algarve
+
+  // ── Suecia (Sweden) ───────────────────────────────────────────────────
+  'Suecia:':             [ 59.3293,   18.0686],  // Stockholm (capital fallback)
+  'Suecia:Malmo':        [ 55.6050,   13.0038],  // Malmö
+  'Suecia:Malmö':        [ 55.6050,   13.0038],  // Malmö (diacritic variant)
 
   // ── Suiza (Switzerland) ───────────────────────────────────────────────
   'Suiza:':              [ 46.9480,    7.4474],  // Bern (capital fallback)
@@ -544,11 +591,26 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Uruguay:Colonia':     [-34.4626,  -57.8400],  // Colonia del Sacramento
 };
 
-// Returns coordinates for a sys tag's country+city, with country-capital fallback.
+// Returns coordinates for a sys tag's country+city.
+// Falls back by splitting city on ' - ' then '/' to find shorter place-name keys,
+// then country capital, then null.
 export function sysTagCoords(country: string, city: string): [number, number] | null {
-  return SYS_TAG_COORDS[country + ':' + city]  // exact city match
-    ?? SYS_TAG_COORDS[country + ':']            // country capital fallback
-    ?? null;                                    // unknown country → no marker
+  const exact = SYS_TAG_COORDS[country + ':' + city];
+  if (exact) return exact;
+  for (const sep of [' - ', '/']) {
+    const idx = city.indexOf(sep);
+    if (idx > 0) {
+      const hit = SYS_TAG_COORDS[country + ':' + city.slice(0, idx).trim()];
+      if (hit) return hit;
+    }
+  }
+  // Strip trailing space+number: "Lisboa 1" / "Lisboa 2" → "Lisboa"
+  const stripped = city.replace(/\s+\d+$/, '').trim();
+  if (stripped && stripped !== city) {
+    const hit = SYS_TAG_COORDS[country + ':' + stripped];
+    if (hit) return hit;
+  }
+  return SYS_TAG_COORDS[country + ':'] ?? null;
 }
 
 // ── Translation tables ────────────────────────────────────────────────────
@@ -590,6 +652,7 @@ export const COUNTRY_NAMES: Record<string, { en: string; es: string }> = {
   'Polonia':         { en: 'Poland',          es: 'Polonia' },
   'Portugal':        { en: 'Portugal',        es: 'Portugal' },
   'Republica Checa': { en: 'Czech Republic',  es: 'República Checa' },
+  'Suecia':          { en: 'Sweden',           es: 'Suecia' },
   'Suiza':           { en: 'Switzerland',     es: 'Suiza' },
   'Tailandia':       { en: 'Thailand',        es: 'Tailandia' },
   'Turquia':         { en: 'Turkey',          es: 'Turquía' },
@@ -615,6 +678,7 @@ export const GEO_TO_SYS: Record<string, string> = {
   'Turkey':         'Turquia',
   'Greece':         'Grecia',
   'Poland':         'Polonia',
+  'Sweden':         'Suecia',
   'Switzerland':    'Suiza',
   'United Kingdom': 'Inglaterra',
   'England':        'Inglaterra',

@@ -271,6 +271,7 @@ export default function PhotoModal({ photo, onClose, onPrev, onNext, onAddTag, o
               className="modal-video"
               src={photo.video_proxy ? config.cloudFrontUrl + '/' + photo.video_proxy : rawUrl}
               controls
+              muted={false}
               autoPlay={false}
               onLoadedData={() => setFullLoaded(true)}
               onError={() => setFullLoaded(true)}

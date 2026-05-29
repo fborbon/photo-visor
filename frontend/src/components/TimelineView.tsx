@@ -26,7 +26,6 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
 
   const [selectedYear,  setSelectedYear]  = useState<number | null>(initialYear  ?? null);
   const [selectedMonth, setSelectedMonth] = useState<number | null>(initialMonth ?? null);
-  const [sortOrder,     setSortOrder]     = useState<'asc' | 'desc'>('asc');
 
   // Reset month when year changes — but not on the initial mount (preserves initialMonth)
   useEffect(() => {
@@ -49,15 +48,8 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
     }
     return Array.from(map.entries())
       .sort((a, b) => a[0] - b[0])
-      .map(([month, photos]) => ({
-        month,
-        photos: [...photos].sort((a, b) => {
-          const ta = a.dt ?? '';
-          const tb = b.dt ?? '';
-          return sortOrder === 'desc' ? tb.localeCompare(ta) : ta.localeCompare(tb);
-        }),
-      }));
-  }, [yearPhotos, isOwner, isPhotoPrivate, sortOrder]);
+      .map(([month, photos]) => ({ month, photos }));
+  }, [yearPhotos, isOwner, isPhotoPrivate]);
 
   const activeGroup = selectedMonth !== null
     ? monthGroups.find(g => g.month === selectedMonth) ?? null
@@ -107,19 +99,9 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
               </div>
             )}
 
-            {/* Sort toggle + photo grid for selected month */}
+            {/* Photo grid for selected month — sort handled by PhotoGrid */}
             {activeGroup && (
               <>
-                <div className="timeline-sort-row">
-                  <button
-                    className={'timeline-sort-btn' + (sortOrder === 'asc' ? ' active' : '')}
-                    onClick={() => setSortOrder('asc')}
-                  >↑ Oldest</button>
-                  <button
-                    className={'timeline-sort-btn' + (sortOrder === 'desc' ? ' active' : '')}
-                    onClick={() => setSortOrder('desc')}
-                  >↓ Newest</button>
-                </div>
                 <div className="month-section">
                   <div className="month-section-header">
                     <span className="month-section-name">

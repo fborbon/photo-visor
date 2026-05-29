@@ -7,6 +7,8 @@ const t = {
     tabMap:      'Map',
     tabTimeline: 'Timeline',
     signOut:     'Sign out',
+    welcome:        'Welcome',
+    welcomeFemale:  'Welcome',
 
     // Map
     loadingLocations: 'Loading locations…',
@@ -100,6 +102,7 @@ const t = {
 
     // Statistics
     tabStats:         'Statistics',
+    tabUsage:         'Usage',
     statsTotal:       'total photos',
     statsNoDate:      'without date',
     statsCumulative:       'Cumulative photos over time',
@@ -158,6 +161,8 @@ const t = {
     tabMap:      'Mapa',
     tabTimeline: 'Línea de Tiempo',
     signOut:     'Cerrar sesión',
+    welcome:        'Bienvenido',
+    welcomeFemale:  'Bienvenida',
 
     loadingLocations: 'Cargando ubicaciones…',
     privateMarker:    'Privado',
@@ -242,6 +247,7 @@ const t = {
 
     // Estadísticas
     tabStats:         'Estadísticas',
+    tabUsage:         'Uso',
     statsTotal:       'fotos en total',
     statsNoDate:      'sin fecha',
     statsCumulative:       'Fotos acumuladas a lo largo del tiempo',
