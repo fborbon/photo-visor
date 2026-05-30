@@ -68,7 +68,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
   const [sortOrder,    setSortOrder]    = useState<SortOrder>('oldest');
 
   const { isOwner, isPhotoPrivate, isAlbumPrivate, togglePhoto } = usePrivacy();
-  const { addPhotoToTag, getComment, setComment, tags, sharedTags } = useTags();
+  const { addPhotoToTag, getComment, setComment, tags, sharedTags, systemTagIndex } = useTags();
   const { trashPhotos, isTrashed } = useTrash();
   const { tr } = useLang();
   const { trackEvent } = useAnalytics();
@@ -327,9 +327,13 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
                     title="Copy debug info"
                     onClick={e => {
                       e.stopPropagation();
+                      const sysTags = Object.keys(systemTagIndex.tags).filter(name =>
+                        p.path?.includes(name) || p.folder?.includes(name)
+                      );
                       const photoTags = [
                         ...Object.entries(tags).filter(([, v]) => v.photos.some(ph => ph.hash === p.hash)).map(([k]) => k),
                         ...Object.entries(sharedTags).filter(([, v]) => v.photos.some(ph => ph.hash === p.hash)).map(([k]) => k),
+                        ...sysTags,
                       ];
                       const location = [p.city, p.country].filter(Boolean).join(', ')
                         || (p.lat != null && p.lng != null ? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : 'n/a');
