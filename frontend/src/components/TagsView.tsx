@@ -62,14 +62,14 @@ function PathTreeNode({ node, depth, expandedPaths, selectedPath, onToggle, onSe
   const isSelected  = selectedPath === node.fullPath;
 
   const handleRowClick = () => {
-    if (node.hasIndex) onSelect(node.fullPath);
-    if (hasChildren)   onToggle(node.fullPath);
+    onSelect(node.fullPath);
+    if (hasChildren) onToggle(node.fullPath);
   };
 
   return (
     <>
       <div
-        className={'path-tree-row' + (isSelected ? ' active' : '') + (node.hasIndex ? '' : ' no-index')}
+        className={'path-tree-row' + (isSelected ? ' active' : '')}
         style={{ paddingLeft: depth * 14 + 6 }}
         onClick={handleRowClick}
         role="button"

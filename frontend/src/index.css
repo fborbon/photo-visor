@@ -702,8 +702,6 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 }
 .path-tree-row:hover                  { background: rgba(255,255,255,.06); }
 .path-tree-row.active                 { background: rgba(255,0,132,.18); }
-.path-tree-row.no-index               { cursor: default; }
-.path-tree-row.no-index:hover         { background: rgba(255,255,255,.03); }
 
 .path-tree-arrow {
   flex-shrink: 0;
@@ -732,7 +730,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   min-width: 0;
 }
 .path-tree-row.active .path-tree-label { color: #ffd0ea; font-weight: 600; }
-.path-tree-row:not(.no-index):hover .path-tree-label { color: #e2e8f0; }
+.path-tree-row:hover .path-tree-label { color: #e2e8f0; }
 
 /* Per-user sub-section in Personal Tags */
 .rail-user-section { margin-bottom: .3rem; }
