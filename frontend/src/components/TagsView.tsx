@@ -3,17 +3,42 @@ import { useTags }    from '../context/TagsContext';
 import { useLang }    from '../context/LangContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { useIndex }   from '../hooks/useIndex';
-import { PhotoEntry } from '../types';
+import { PhotoEntry, Summary } from '../types';
 import PhotoGrid from './PhotoGrid';
 import { sysTagCountryKey, sysTagCityKey, sysTagLabel, translateCountry, translateCity } from '../utils/sysTags';
 import { displayNameForEmail } from '../config';
 
-type Scope = 'private' | 'shared' | 'system';
+type Scope = 'private' | 'shared' | 'system' | 'path';
 interface Selected { name: string; scope: Scope; slug?: string; }
 
 const MIN_RAIL = 150;
 const MAX_RAIL = 600;
 const DEFAULT_RAIL = 273;
+
+function folderLabel(path: string, root: string): string {
+  const rest = root && path.startsWith(root + '/') ? path.slice(root.length + 1) : path;
+  return rest.replace(/_/g, ' ').replace(/\//g, ' / ');
+}
+
+function folderFullLabel(path: string): string {
+  return path.replace(/_/g, ' ').replace(/\//g, ' / ');
+}
+
+interface SectionHeadingProps {
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}
+
+function SectionHeading({ open, onToggle, children, style }: SectionHeadingProps) {
+  return (
+    <button className="rail-group-heading rail-group-heading--btn" style={style} onClick={onToggle}>
+      <span className={'rail-chevron' + (open ? ' open' : '')}>›</span>
+      {children}
+    </button>
+  );
+}
 
 export default function TagsView() {
   const { tags, tagNames, sharedTags, sharedTagNames, systemTagIndex, systemTagsLoading, deleteTag, isMySharedTag } = useTags();
@@ -21,7 +46,17 @@ export default function TagsView() {
   const { isOwner } = usePrivacy();
   const [sel, setSel] = useState<Selected | null>(null);
   const [sysFilter, setSysFilter] = useState('');
+  const [pathFilter, setPathFilter] = useState('');
   const [confirmDeleteTag, setConfirmDeleteTag] = useState<{ name: string; shared: boolean } | null>(null);
+
+  // ── Section collapse state ─────────────────────────────────────────
+  const [personalOpen, setPersonalOpen] = useState(true);
+  const [systemOpen,   setSystemOpen]   = useState(true);
+  const [pathOpen,     setPathOpen]     = useState(true);
+
+  // ── Summary (for general_folders / Path Tags) ──────────────────────
+  const { data: summary } = useIndex<Summary>('index/summary.json');
+  const folderPaths = summary?.general_folders ?? [];
 
   // ── Resizable panel ────────────────────────────────────────────────
   const [railWidth, setRailWidth] = useState(DEFAULT_RAIL);
@@ -70,6 +105,11 @@ export default function TagsView() {
     sel?.scope === 'system' && sel.slug ? `index/sys/${sel.slug}.json` : null
   );
 
+  // Lazy-load path tag photos
+  const { data: pathPhotos, loading: pathLoading } = useIndex<PhotoEntry[]>(
+    sel?.scope === 'path' ? `index/general/${sel.name}.json` : null
+  );
+
   // Group shared tags by owner
   const tagsByOwner = useMemo(() => {
     const groups: Record<string, string[]> = {};
@@ -82,7 +122,7 @@ export default function TagsView() {
     return groups;
   }, [sharedTagNames, sharedTags]);
 
-  // Filtered system tag names — non-owners only see public (Camera-origin) tags
+  // Filtered system tag names
   const sysTagNames = useMemo(() => {
     const all = Object.keys(systemTagIndex.tags)
       .filter(n => isOwner || systemTagIndex.tags[n].public)
@@ -111,6 +151,22 @@ export default function TagsView() {
       });
   }, [sysTagNames]);
 
+  // Group path tags by root folder
+  const pathTagGroups = useMemo(() => {
+    const q = pathFilter.toLowerCase();
+    const filtered = q
+      ? folderPaths.filter(p => p.toLowerCase().includes(q))
+      : folderPaths;
+    const groups: Record<string, string[]> = {};
+    for (const path of filtered) {
+      const slash = path.indexOf('/');
+      const root  = slash > 0 ? path.slice(0, slash) : path;
+      if (!groups[root]) groups[root] = [];
+      groups[root].push(path);
+    }
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [folderPaths, pathFilter]);
+
   const entry = sel
     ? (sel.scope === 'private' ? tags[sel.name] : sel.scope === 'shared' ? sharedTags[sel.name] : null)
     : null;
@@ -137,105 +193,153 @@ export default function TagsView() {
       {/* ── Tag rail ─────────────────────────────────────── */}
       <aside className="tags-rail" style={isMobile ? undefined : { width: railWidth }}>
 
-        {/* ── Personal Tags ── */}
-        <h3 className="rail-group-heading">👤 {tr.personalTags}</h3>
+        {/* ══ Personal Tags ══ */}
+        <SectionHeading open={personalOpen} onToggle={() => setPersonalOpen(v => !v)}>
+          👤 {tr.personalTags}
+        </SectionHeading>
 
-        {tagNames.length > 0 && (
-          <div className="rail-user-section">
-            <div className="rail-user-label">🔒 {tr.myTags}</div>
-            {tagNames.map(name => (
-              <button
-                key={'p:' + name}
-                className={'tag-rail-btn' + (sel?.name === name && sel.scope === 'private' ? ' active' : '')}
-                onClick={() => select(name, 'private')}
-              >
-                <span className="tag-rail-name">{name}</span>
-                <span className="tag-rail-right">
-                  <span className="tag-rail-count">{tags[name].photos.length + tags[name].albums.length}</span>
-                  {canDelete(name, 'private') && (
-                    <span className="tag-rail-del" onClick={e => handleDeleteClick(e, name, false)} title="Delete tag">×</span>
-                  )}
-                </span>
-              </button>
+        {personalOpen && (
+          <>
+            {tagNames.length > 0 && (
+              <div className="rail-user-section">
+                <div className="rail-user-label">🔒 {tr.myTags}</div>
+                {tagNames.map(name => (
+                  <button
+                    key={'p:' + name}
+                    className={'tag-rail-btn' + (sel?.name === name && sel.scope === 'private' ? ' active' : '')}
+                    onClick={() => select(name, 'private')}
+                  >
+                    <span className="tag-rail-name">{name}</span>
+                    <span className="tag-rail-right">
+                      <span className="tag-rail-count">{tags[name].photos.length + tags[name].albums.length}</span>
+                      {canDelete(name, 'private') && (
+                        <span className="tag-rail-del" onClick={e => handleDeleteClick(e, name, false)} title="Delete tag">×</span>
+                      )}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {Object.entries(tagsByOwner).map(([owner, names]) => (
+              <div key={'owner:' + owner} className="rail-user-section">
+                <div className="rail-user-label">👤 {owner}</div>
+                {names.map(name => (
+                  <button
+                    key={'s:' + name}
+                    className={'tag-rail-btn shared-tag' + (sel?.name === name && sel.scope === 'shared' ? ' active' : '')}
+                    onClick={() => select(name, 'shared')}
+                  >
+                    <span className="tag-rail-name">{name}</span>
+                    <span className="tag-rail-right">
+                      <span className="tag-rail-count">{sharedTags[name].photos.length + sharedTags[name].albums.length}</span>
+                      {canDelete(name, 'shared') && (
+                        <span className="tag-rail-del" onClick={e => handleDeleteClick(e, name, true)} title="Delete tag">×</span>
+                      )}
+                    </span>
+                  </button>
+                ))}
+              </div>
             ))}
-          </div>
+
+            {tagNames.length === 0 && sharedTagNames.length === 0 && (
+              <p className="tags-empty-hint">{tr.noTags}</p>
+            )}
+          </>
         )}
 
-        {Object.entries(tagsByOwner).map(([owner, names]) => (
-          <div key={'owner:' + owner} className="rail-user-section">
-            <div className="rail-user-label">👤 {owner}</div>
-            {names.map(name => (
-              <button
-                key={'s:' + name}
-                className={'tag-rail-btn shared-tag' + (sel?.name === name && sel.scope === 'shared' ? ' active' : '')}
-                onClick={() => select(name, 'shared')}
-              >
-                <span className="tag-rail-name">{name}</span>
-                <span className="tag-rail-right">
-                  <span className="tag-rail-count">{sharedTags[name].photos.length + sharedTags[name].albums.length}</span>
-                  {canDelete(name, 'shared') && (
-                    <span className="tag-rail-del" onClick={e => handleDeleteClick(e, name, true)} title="Delete tag">×</span>
-                  )}
-                </span>
-              </button>
+        {/* ══ System Tags ══ */}
+        <SectionHeading open={systemOpen} onToggle={() => setSystemOpen(v => !v)} style={{ marginTop: '1rem' }}>
+          🗂 {tr.systemTags}
+        </SectionHeading>
+
+        {systemOpen && (
+          <>
+            <input
+              className="sys-tag-filter"
+              placeholder={tr.filterTags}
+              value={sysFilter}
+              onChange={e => setSysFilter(e.target.value)}
+            />
+            {systemTagsLoading && <p className="tags-empty-hint">{tr.loading}</p>}
+            {!systemTagsLoading && sysTagNames.length === 0 && (
+              <p className="tags-empty-hint">{sysFilter ? tr.noTagsMatch : tr.noSystemTags}</p>
+            )}
+            {sysTagsByCountry.map(({ country, cities }) => (
+              <div key={'c:' + country} className="sys-country-group">
+                <div className="sys-country-heading">{translateCountry(country, lang)}</div>
+                {cities.map(({ city, names }) => {
+                  const showCityHeader = city !== '' &&
+                    (names.length > 1 || sysTagLabel(names[0]) !== city);
+                  return (
+                    <div key={'city:' + country + ':' + city} className="sys-city-group">
+                      {showCityHeader && (
+                        <div className="sys-city-heading">{translateCity(city, lang)}</div>
+                      )}
+                      {names.map(name => {
+                        const meta  = systemTagIndex.tags[name];
+                        const label = sysTagLabel(name);
+                        const cls =
+                          'tag-rail-btn sys-tag' +
+                          (showCityHeader ? ' sys-tag-item' : ' sys-tag-city') +
+                          (sel?.name === name && sel.scope === 'system' ? ' active' : '');
+                        return (
+                          <button
+                            key={'sys:' + name}
+                            className={cls}
+                            onClick={() => select(name, 'system', meta.slug)}
+                            title={name}
+                          >
+                            <span className="tag-rail-name">{label}</span>
+                            <span className="tag-rail-count">{meta.count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
             ))}
-          </div>
-        ))}
-
-        {tagNames.length === 0 && sharedTagNames.length === 0 && (
-          <p className="tags-empty-hint">{tr.noTags}</p>
+          </>
         )}
 
-        {/* ── System Tags ── */}
-        <h3 className="rail-group-heading" style={{ marginTop: '1rem' }}>🗂 {tr.systemTags}</h3>
-        <input
-          className="sys-tag-filter"
-          placeholder={tr.filterTags}
-          value={sysFilter}
-          onChange={e => setSysFilter(e.target.value)}
-        />
-        {systemTagsLoading && (
-          <p className="tags-empty-hint">{tr.loading}</p>
-        )}
-        {!systemTagsLoading && sysTagNames.length === 0 && (
-          <p className="tags-empty-hint">{sysFilter ? tr.noTagsMatch : tr.noSystemTags}</p>
+        {/* ══ Path Tags ══ */}
+        <SectionHeading open={pathOpen} onToggle={() => setPathOpen(v => !v)} style={{ marginTop: '1rem' }}>
+          📁 {tr.pathTags}
+        </SectionHeading>
+
+        {pathOpen && (
+          <>
+            <input
+              className="sys-tag-filter"
+              placeholder={tr.filterTags}
+              value={pathFilter}
+              onChange={e => setPathFilter(e.target.value)}
+            />
+            {folderPaths.length === 0 && (
+              <p className="tags-empty-hint">{tr.loading}</p>
+            )}
+            {folderPaths.length > 0 && pathTagGroups.length === 0 && (
+              <p className="tags-empty-hint">{tr.noTagsMatch}</p>
+            )}
+            {pathTagGroups.map(([root, paths]) => (
+              <div key={'root:' + root} className="sys-country-group">
+                <div className="sys-country-heading">{root.replace(/_/g, ' ')}</div>
+                {paths.map(path => (
+                  <button
+                    key={'path:' + path}
+                    className={'tag-rail-btn sys-tag sys-tag-city' + (sel?.name === path && sel.scope === 'path' ? ' active' : '')}
+                    onClick={() => select(path, 'path')}
+                    title={folderFullLabel(path)}
+                  >
+                    <span className="tag-rail-name path-tag-label">{folderLabel(path, root)}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </>
         )}
 
-        {sysTagsByCountry.map(({ country, cities }) => (
-          <div key={'c:' + country} className="sys-country-group">
-            <div className="sys-country-heading">{translateCountry(country, lang)}</div>
-            {cities.map(({ city, names }) => {
-              const showCityHeader = city !== '' &&
-                (names.length > 1 || sysTagLabel(names[0]) !== city);
-              return (
-                <div key={'city:' + country + ':' + city} className="sys-city-group">
-                  {showCityHeader && (
-                    <div className="sys-city-heading">{translateCity(city, lang)}</div>
-                  )}
-                  {names.map(name => {
-                    const meta  = systemTagIndex.tags[name];
-                    const label = sysTagLabel(name);
-                    const cls =
-                      'tag-rail-btn sys-tag' +
-                      (showCityHeader ? ' sys-tag-item' : ' sys-tag-city') +
-                      (sel?.name === name && sel.scope === 'system' ? ' active' : '');
-                    return (
-                      <button
-                        key={'sys:' + name}
-                        className={cls}
-                        onClick={() => select(name, 'system', meta.slug)}
-                        title={name}
-                      >
-                        <span className="tag-rail-name">{label}</span>
-                        <span className="tag-rail-count">{meta.count}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        ))}
       </aside>
 
       {/* ── Resize handle ─────────────────────────────────── */}
@@ -245,6 +349,7 @@ export default function TagsView() {
       <div className="tags-main" ref={mainRef}>
         {!sel && <div className="timeline-hint">{tr.noTags}</div>}
 
+        {/* Personal / Shared tag content */}
         {sel && entry && (
           <>
             <div className="tags-header">
@@ -309,6 +414,7 @@ export default function TagsView() {
           </>
         )}
 
+        {/* System tag content */}
         {sel?.scope === 'system' && (
           <>
             <div className="tags-header">
@@ -332,6 +438,29 @@ export default function TagsView() {
                     translateCountry(sysTagCountryKey(sel.name), lang),
                   ].filter(Boolean).join(', ')}
                 />
+                <div className="back-to-top-wrap">
+                  <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {/* Path tag content */}
+        {sel?.scope === 'path' && (
+          <>
+            <div className="tags-header">
+              <h2 className="tags-selected-name">
+                📁 {folderFullLabel(sel.name)}
+              </h2>
+            </div>
+            {pathLoading && <p className="panel-loading">{tr.loading}</p>}
+            {pathPhotos && pathPhotos.length === 0 && (
+              <p className="panel-loading">{tr.noTaggedPhotos}</p>
+            )}
+            {pathPhotos && pathPhotos.length > 0 && (
+              <>
+                <PhotoGrid photos={pathPhotos} placeFallback={folderFullLabel(sel.name)} />
                 <div className="back-to-top-wrap">
                   <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
                 </div>

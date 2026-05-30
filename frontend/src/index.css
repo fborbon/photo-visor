@@ -659,6 +659,40 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   margin-top: .3rem;
 }
 .rail-group-heading:first-child { border-top: none; margin-top: 0; }
+.rail-group-heading--btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  transition: color .15s;
+}
+.rail-group-heading--btn:hover { color: #ff40a8; }
+.rail-chevron {
+  display: inline-block;
+  font-style: normal;
+  font-size: .75rem;
+  transform: rotate(0deg);
+  transition: transform .2s;
+  flex-shrink: 0;
+  color: #666;
+}
+.rail-chevron.open { transform: rotate(90deg); }
+
+/* Path tag items */
+.path-tag-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
 
 /* Per-user sub-section in Personal Tags */
 .rail-user-section { margin-bottom: .3rem; }
