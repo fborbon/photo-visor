@@ -686,13 +686,53 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 }
 .rail-chevron.open { transform: rotate(90deg); }
 
-/* Path tag items */
-.path-tag-label {
+/* ── Path tree (file-explorer style) ───────────────────────────────── */
+.path-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  padding-right: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background .1s;
+  user-select: none;
+  outline: none;
+}
+.path-tree-row:hover                  { background: rgba(255,255,255,.06); }
+.path-tree-row.active                 { background: rgba(255,0,132,.18); }
+.path-tree-row.no-index               { cursor: default; }
+.path-tree-row.no-index:hover         { background: rgba(255,255,255,.03); }
+
+.path-tree-arrow {
+  flex-shrink: 0;
+  width: 14px;
+  font-size: .65rem;
+  color: #555;
+  text-align: center;
+  visibility: hidden;
+}
+.path-tree-arrow.visible { visibility: visible; }
+.path-tree-row:hover .path-tree-arrow { color: #888; }
+
+.path-tree-icon {
+  flex-shrink: 0;
+  font-size: .78rem;
+  line-height: 1;
+}
+
+.path-tree-label {
+  font-size: .78rem;
+  color: #aaa;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
+  flex: 1;
+  min-width: 0;
 }
+.path-tree-row.active .path-tree-label { color: #ffd0ea; font-weight: 600; }
+.path-tree-row:not(.no-index):hover .path-tree-label { color: #e2e8f0; }
 
 /* Per-user sub-section in Personal Tags */
 .rail-user-section { margin-bottom: .3rem; }

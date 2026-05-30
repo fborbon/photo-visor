@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useTags }    from '../context/TagsContext';
 import { useLang }    from '../context/LangContext';
 import { usePrivacy } from '../context/PrivacyContext';
@@ -15,22 +15,100 @@ const MIN_RAIL = 150;
 const MAX_RAIL = 600;
 const DEFAULT_RAIL = 273;
 
-function folderLabel(path: string, root: string): string {
-  const rest = root && path.startsWith(root + '/') ? path.slice(root.length + 1) : path;
-  return rest.replace(/_/g, ' ').replace(/\//g, ' / ');
+// ── Path tree ──────────────────────────────────────────────────────────────
+interface TreeNode {
+  name:     string;          // display name (underscores → spaces)
+  fullPath: string;          // e.g. "Latinoamerica/Costa_Rica/Familia"
+  hasIndex: boolean;         // true when index/general/{fullPath}.json exists
+  children: Record<string, TreeNode>;
 }
 
-function folderFullLabel(path: string): string {
-  return path.replace(/_/g, ' ').replace(/\//g, ' / ');
+function buildPathTree(paths: string[]): Record<string, TreeNode> {
+  const pathSet = new Set(paths);
+  const root: Record<string, TreeNode> = {};
+
+  for (const fullPath of paths) {
+    const segments = fullPath.split('/');
+    let cur = root;
+    for (let i = 0; i < segments.length; i++) {
+      const seg      = segments[i];
+      const nodePath = segments.slice(0, i + 1).join('/');
+      if (!cur[seg]) {
+        cur[seg] = {
+          name:     seg.replace(/_/g, ' '),
+          fullPath: nodePath,
+          hasIndex: pathSet.has(nodePath),
+          children: {},
+        };
+      }
+      cur = cur[seg].children;
+    }
+  }
+  return root;
 }
 
+interface PathTreeNodeProps {
+  node:          TreeNode;
+  depth:         number;
+  expandedPaths: Set<string>;
+  selectedPath:  string | null;
+  onToggle:      (path: string) => void;
+  onSelect:      (path: string) => void;
+}
+
+function PathTreeNode({ node, depth, expandedPaths, selectedPath, onToggle, onSelect }: PathTreeNodeProps) {
+  const hasChildren = Object.keys(node.children).length > 0;
+  const isExpanded  = expandedPaths.has(node.fullPath);
+  const isSelected  = selectedPath === node.fullPath;
+
+  const handleRowClick = () => {
+    if (node.hasIndex) onSelect(node.fullPath);
+    if (hasChildren)   onToggle(node.fullPath);
+  };
+
+  return (
+    <>
+      <div
+        className={'path-tree-row' + (isSelected ? ' active' : '') + (node.hasIndex ? '' : ' no-index')}
+        style={{ paddingLeft: depth * 14 + 6 }}
+        onClick={handleRowClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') handleRowClick(); }}
+      >
+        <span className={'path-tree-arrow' + (hasChildren ? ' visible' : '')}>
+          {hasChildren ? (isExpanded ? '▾' : '▸') : ''}
+        </span>
+        <span className="path-tree-icon">📁</span>
+        <span className="path-tree-label">{node.name}</span>
+      </div>
+
+      {isExpanded && hasChildren && (
+        Object.entries(node.children)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, child]) => (
+            <PathTreeNode
+              key={key}
+              node={child}
+              depth={depth + 1}
+              expandedPaths={expandedPaths}
+              selectedPath={selectedPath}
+              onToggle={onToggle}
+              onSelect={onSelect}
+            />
+          ))
+      )}
+    </>
+  );
+}
+
+// ── Section heading ────────────────────────────────────────────────────────
 interface SectionHeadingProps {
-  open: boolean;
+  open:     boolean;
   onToggle: () => void;
   children: React.ReactNode;
-  style?: React.CSSProperties;
+  style?:   React.CSSProperties;
 }
-
 function SectionHeading({ open, onToggle, children, style }: SectionHeadingProps) {
   return (
     <button className="rail-group-heading rail-group-heading--btn" style={style} onClick={onToggle}>
@@ -40,25 +118,51 @@ function SectionHeading({ open, onToggle, children, style }: SectionHeadingProps
   );
 }
 
+function folderFullLabel(path: string) {
+  return path.replace(/_/g, ' ').replace(/\//g, ' / ');
+}
+
+// ── Main component ─────────────────────────────────────────────────────────
 export default function TagsView() {
   const { tags, tagNames, sharedTags, sharedTagNames, systemTagIndex, systemTagsLoading, deleteTag, isMySharedTag } = useTags();
   const { lang, tr } = useLang();
   const { isOwner } = usePrivacy();
   const [sel, setSel] = useState<Selected | null>(null);
-  const [sysFilter, setSysFilter] = useState('');
+  const [sysFilter,  setSysFilter]  = useState('');
   const [pathFilter, setPathFilter] = useState('');
   const [confirmDeleteTag, setConfirmDeleteTag] = useState<{ name: string; shared: boolean } | null>(null);
 
-  // ── Section collapse state ─────────────────────────────────────────
+  // Section collapse
   const [personalOpen, setPersonalOpen] = useState(true);
   const [systemOpen,   setSystemOpen]   = useState(true);
   const [pathOpen,     setPathOpen]     = useState(true);
 
-  // ── Summary (for general_folders / Path Tags) ──────────────────────
-  const { data: summary } = useIndex<Summary>('index/summary.json');
-  const folderPaths = summary?.general_folders ?? [];
+  // Path tree expand state
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
 
-  // ── Resizable panel ────────────────────────────────────────────────
+  const toggleExpanded = useCallback((path: string) => {
+    setExpandedPaths(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return next;
+    });
+  }, []);
+
+  // Summary for general_folders
+  const { data: summary } = useIndex<Summary>('index/summary.json');
+  const folderPaths = useMemo(() => summary?.general_folders ?? [], [summary]);
+
+  // Build tree from flat list
+  const pathTree = useMemo(() => buildPathTree(folderPaths), [folderPaths]);
+
+  // Flat filtered list (used when search is active)
+  const filteredPaths = useMemo(() => {
+    if (!pathFilter.trim()) return [];
+    const q = pathFilter.toLowerCase();
+    return folderPaths.filter(p => p.toLowerCase().replace(/_/g, ' ').includes(q));
+  }, [folderPaths, pathFilter]);
+
+  // Resizable panel
   const [railWidth, setRailWidth] = useState(DEFAULT_RAIL);
   const mainRef       = useRef<HTMLDivElement>(null);
   const dragRef       = useRef(false);
@@ -94,7 +198,7 @@ export default function TagsView() {
     e.preventDefault();
   };
 
-  // ── Album expand ───────────────────────────────────────────────────
+  // Album expand
   const [expandedAlbum, setExpandedAlbum] = useState<string | null>(null);
   const { data: albumPhotos, loading: albumLoading } = useIndex<PhotoEntry[]>(
     expandedAlbum ? 'index/geo/' + expandedAlbum + '.json' : null
@@ -150,22 +254,6 @@ export default function TagsView() {
         return { country, cities };
       });
   }, [sysTagNames]);
-
-  // Group path tags by root folder
-  const pathTagGroups = useMemo(() => {
-    const q = pathFilter.toLowerCase();
-    const filtered = q
-      ? folderPaths.filter(p => p.toLowerCase().includes(q))
-      : folderPaths;
-    const groups: Record<string, string[]> = {};
-    for (const path of filtered) {
-      const slash = path.indexOf('/');
-      const root  = slash > 0 ? path.slice(0, slash) : path;
-      if (!groups[root]) groups[root] = [];
-      groups[root].push(path);
-    }
-    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
-  }, [folderPaths, pathFilter]);
 
   const entry = sel
     ? (sel.scope === 'private' ? tags[sel.name] : sel.scope === 'shared' ? sharedTags[sel.name] : null)
@@ -316,27 +404,39 @@ export default function TagsView() {
               value={pathFilter}
               onChange={e => setPathFilter(e.target.value)}
             />
-            {folderPaths.length === 0 && (
-              <p className="tags-empty-hint">{tr.loading}</p>
-            )}
-            {folderPaths.length > 0 && pathTagGroups.length === 0 && (
-              <p className="tags-empty-hint">{tr.noTagsMatch}</p>
-            )}
-            {pathTagGroups.map(([root, paths]) => (
-              <div key={'root:' + root} className="sys-country-group">
-                <div className="sys-country-heading">{root.replace(/_/g, ' ')}</div>
-                {paths.map(path => (
+
+            {/* Filter active → flat list of matching paths */}
+            {pathFilter.trim() ? (
+              filteredPaths.length === 0
+                ? <p className="tags-empty-hint">{tr.noTagsMatch}</p>
+                : filteredPaths.map(path => (
                   <button
-                    key={'path:' + path}
+                    key={'fp:' + path}
                     className={'tag-rail-btn sys-tag sys-tag-city' + (sel?.name === path && sel.scope === 'path' ? ' active' : '')}
                     onClick={() => select(path, 'path')}
                     title={folderFullLabel(path)}
                   >
-                    <span className="tag-rail-name path-tag-label">{folderLabel(path, root)}</span>
+                    <span className="tag-rail-name">{folderFullLabel(path)}</span>
                   </button>
-                ))}
-              </div>
-            ))}
+                ))
+            ) : (
+              /* No filter → tree view */
+              folderPaths.length === 0
+                ? <p className="tags-empty-hint">{tr.loading}</p>
+                : Object.entries(pathTree)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([key, node]) => (
+                      <PathTreeNode
+                        key={key}
+                        node={node}
+                        depth={0}
+                        expandedPaths={expandedPaths}
+                        selectedPath={sel?.scope === 'path' ? sel.name : null}
+                        onToggle={toggleExpanded}
+                        onSelect={path => select(path, 'path')}
+                      />
+                    ))
+            )}
           </>
         )}
 
@@ -450,9 +550,7 @@ export default function TagsView() {
         {sel?.scope === 'path' && (
           <>
             <div className="tags-header">
-              <h2 className="tags-selected-name">
-                📁 {folderFullLabel(sel.name)}
-              </h2>
+              <h2 className="tags-selected-name">📁 {folderFullLabel(sel.name)}</h2>
             </div>
             {pathLoading && <p className="panel-loading">{tr.loading}</p>}
             {pathPhotos && pathPhotos.length === 0 && (
