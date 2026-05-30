@@ -1610,6 +1610,119 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   50%       { opacity: .55; }
 }
 
+/* ── Sync album list ──────────────────────────────────────────────── */
+.sync-load-btn {
+  align-self: flex-start;
+  padding: .45rem 1.1rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  font-size: .85rem;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: background .15s;
+}
+.sync-load-btn:not(:disabled):hover { background: #263044; }
+.sync-load-btn:disabled { opacity: .45; }
+
+.sync-albums-section  { display: flex; flex-direction: column; gap: .75rem; }
+.sync-album-list      { display: flex; flex-direction: column; gap: .6rem; }
+
+.sync-album-row {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: .75rem .9rem;
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+  transition: opacity .15s;
+}
+.sync-album-row--disabled { opacity: .5; }
+
+.sync-album-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+.sync-album-check {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .9rem;
+  color: #e2e8f0;
+  cursor: pointer;
+  user-select: none;
+}
+.sync-album-check input[type="checkbox"] { accent-color: #ff0084; cursor: pointer; width: 1rem; height: 1rem; flex-shrink: 0; }
+.sync-album-name { font-weight: 600; }
+
+.sync-album-private-check {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: .8rem;
+  color: #94a3b8;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.sync-album-private-check input[type="checkbox"] { accent-color: #ff0084; cursor: pointer; width: .9rem; height: .9rem; }
+.sync-album-private-check--desktop { font-size: .88rem; }
+
+.sync-album-fields {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+.sync-album-input {
+  width: 100%;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: .4rem .65rem;
+  font-size: .82rem;
+  color: #cbd5e1;
+  transition: border-color .15s;
+}
+.sync-album-input::placeholder { color: #475569; }
+.sync-album-input:focus { outline: none; border-color: #ff0084; }
+.sync-album-input:disabled { opacity: .45; }
+
+.sync-tag-preview {
+  font-size: .75rem;
+  color: #64748b;
+  padding: .2rem .1rem;
+  font-style: italic;
+}
+
+/* ── Desktop folder picker ────────────────────────────────────────── */
+.sync-desktop-section  { display: flex; flex-direction: column; gap: .75rem; }
+.sync-desktop-folder {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: .75rem .9rem;
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+}
+.sync-desktop-folder-name {
+  font-size: .9rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+}
+.sync-desktop-count {
+  font-size: .78rem;
+  font-weight: 400;
+  color: #64748b;
+}
+
 /* ── Video in modal ───────────────────────────────────────────────── */
 .modal-video {
   max-width:  min(90vw, 1200px);

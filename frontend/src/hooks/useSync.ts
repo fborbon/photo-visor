@@ -3,7 +3,9 @@ import { Capacitor } from '@capacitor/core';
 import { fetchAuthSession, getCurrentUser } from 'aws-amplify/auth';
 import { S3Client, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import config from '../config';
-import type { UserTags, PhotoEntry } from '../types';
+import type { AlbumConfig, AlbumItem, UserTags, PhotoEntry } from '../types';
+
+export type { AlbumConfig, AlbumItem };
 
 function emailToTagsKey(email: string) {
   return 'index/tags/' + email.toLowerCase().replace(/[^a-z0-9]/g, '_') + '.json';
@@ -36,6 +38,24 @@ function s3Key(hash: string, filename: string): string {
 
 function isCameraAlbum(albumIdentifier: string, albumName: string): boolean {
   return /\/DCIM\/Camera\b/i.test(albumIdentifier) || albumName.trim().toLowerCase() === 'camera';
+}
+
+export function deriveTagName(cfg: AlbumConfig, fallback: string): string {
+  const loc  = cfg.location.trim();
+  const desc = cfg.description.trim();
+  if (loc && desc) return `${loc} - ${desc}`;
+  return loc || desc || fallback;
+}
+
+function makeS3(): S3Client {
+  return new S3Client({
+    region: config.region,
+    credentials: async () => {
+      const s = await fetchAuthSession();
+      if (!s.credentials) throw new Error('Not authenticated');
+      return s.credentials as never;
+    },
+  });
 }
 
 export interface SyncStatus {
@@ -74,7 +94,90 @@ export function useSync(
     localStorage.setItem(AUTO_SYNC_KEY, String(val));
   }, []);
 
-  const sync = useCallback(async () => {
+  // Shared finalization: persist recent list, mark private, write tags, update cursor
+  const finalizeSyncBatch = useCallback(async (
+    s3: S3Client,
+    privateHashes: string[],
+    tagMap: Record<string, { hash: string; s3_key: string }[]>,
+    syncBatch: { hash: string; s3_key: string; syncedAt: string }[],
+    patch: (p: Partial<SyncStatus>) => void,
+  ) => {
+    if (syncBatch.length > 0) {
+      try {
+        const prev: { hash: string; s3_key: string; syncedAt: string }[] =
+          JSON.parse(localStorage.getItem(RECENT_SYNC_KEY) ?? '[]');
+        const prevHashes = new Set(prev.map(e => e.hash));
+        const newOnes = syncBatch.filter(e => !prevHashes.has(e.hash));
+        localStorage.setItem(RECENT_SYNC_KEY, JSON.stringify([...newOnes, ...prev].slice(0, 100)));
+      } catch { /* ignore */ }
+    }
+
+    if (privateHashes.length > 0) {
+      await makePhotosPrivate(privateHashes);
+    }
+
+    if (Object.keys(tagMap).length > 0) {
+      patch({ message: 'Saving tags…' });
+      const user    = await getCurrentUser();
+      const email   = user.signInDetails?.loginId ?? '';
+      const tagsKey = emailToTagsKey(email);
+      const now     = new Date().toISOString();
+
+      let existing: UserTags = { updated: '', tags: {}, comments: {}, commentTimes: {} };
+      try {
+        const r = await fetch(config.cloudFrontUrl + '/' + tagsKey + '?nc=' + Date.now());
+        if (r.ok) existing = await r.json() as UserTags;
+      } catch { /* start fresh */ }
+
+      const updatedTags = { ...existing.tags };
+      for (const [tagName, photos] of Object.entries(tagMap)) {
+        const prev       = updatedTags[tagName] ?? { photos: [], albums: [], createdAt: now };
+        const prevHashes = new Set((prev.photos as PhotoEntry[]).map(p => p.hash));
+        const newPhotos: PhotoEntry[] = photos
+          .filter(p => !prevHashes.has(p.hash))
+          .map(({ hash, s3_key }) => ({
+            hash, s3_key, thumb: null, dt: null,
+            lat: null, lng: null, w: null, h: null,
+          }));
+        if (newPhotos.length === 0) continue;
+        updatedTags[tagName] = { ...prev, photos: [...prev.photos, ...newPhotos] };
+      }
+
+      await s3.send(new PutObjectCommand({
+        Bucket:       config.bucketName,
+        Key:          tagsKey,
+        Body:         JSON.stringify({ ...existing, updated: now, tags: updatedTags }),
+        ContentType:  'application/json',
+        CacheControl: 'no-cache, no-store, must-revalidate',
+      }));
+    }
+
+    const ts = new Date().toISOString();
+    localStorage.setItem(CURSOR_KEY, ts);
+    setLastSync(new Date(ts));
+  }, [makePhotosPrivate, setLastSync]);
+
+  // Enumerate phone gallery albums (mobile only)
+  const loadAlbums = useCallback(async (): Promise<AlbumItem[]> => {
+    if (!Capacitor.isNativePlatform()) return [];
+    try {
+      const { Camera } = await import('@capacitor/camera');
+      const perm = await Camera.requestPermissions({ permissions: ['photos'] });
+      if (perm.photos !== 'granted') return [];
+      const { Media } = await import('@capacitor-community/media');
+      const { albums } = await Media.getAlbums();
+      return albums.map(a => ({
+        identifier: a.identifier,
+        name:       a.name,
+        isCamera:   isCameraAlbum(a.identifier, a.name),
+      }));
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // Mobile sync — reads from phone gallery using per-album AlbumConfig
+  const sync = useCallback(async (albumConfigs: Record<string, AlbumConfig> = {}) => {
     if (running.current) return;
     if (!Capacitor.isNativePlatform()) {
       setStatus({ ...IDLE, phase: 'error', message: 'web-only' });
@@ -86,7 +189,6 @@ export function useSync(
     const patch = (p: Partial<SyncStatus>) => setStatus(prev => ({ ...prev, ...p }));
 
     // Keep the screen awake and JS running while sync is in progress.
-    // Screen Wake Lock prevents Android from auto-dimming/locking during a long sync.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let wakeLock: any = null;
     const acquireWakeLock = async () => {
@@ -96,7 +198,6 @@ export function useSync(
       }
     };
     await acquireWakeLock();
-    // Re-acquire if the lock is released (e.g. tab hidden then shown again)
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible' && running.current) acquireWakeLock();
     };
@@ -122,18 +223,25 @@ export function useSync(
       const cursorStr = localStorage.getItem(CURSOR_KEY);
       const cursor    = cursorStr ? new Date(cursorStr) : null;
 
-      type FileItem = { path: string; name: string; isCamera: boolean; albumName: string };
+      type FileItem = {
+        path: string; name: string;
+        shouldBePrivate: boolean; tagName: string;
+      };
       const allItems: FileItem[] = [];
       const seenPaths = new Set<string>();
-
       const debugLines: string[] = [];
 
       for (const album of albums) {
+        const cfg = albumConfigs[album.identifier];
+        if (cfg && !cfg.sync) continue; // skipped by user
+
         try {
           patch({ phase: 'enumerating', message: `Reading: ${album.name}…` });
           const { files } = await Filesystem.readdir({ path: album.identifier });
-          const isCamera = isCameraAlbum(album.identifier, album.name);
-          const imgFiles = files.filter(f => IMAGE_EXTS.test(f.name));
+          const isCamera       = isCameraAlbum(album.identifier, album.name);
+          const shouldBePrivate = cfg ? cfg.private : !isCamera;
+          const tagName         = cfg ? deriveTagName(cfg, album.name) : album.name;
+          const imgFiles        = files.filter(f => IMAGE_EXTS.test(f.name));
           debugLines.push(`✓ ${album.name}: ${imgFiles.length} photos`);
 
           for (const f of imgFiles) {
@@ -143,7 +251,7 @@ export function useSync(
             if (cursor && f.mtime) {
               if (new Date(f.mtime) <= cursor) continue;
             }
-            allItems.push({ path: fullPath, name: f.name, isCamera, albumName: album.name });
+            allItems.push({ path: fullPath, name: f.name, shouldBePrivate, tagName });
           }
         } catch (e) {
           debugLines.push(`✗ ${album.name}: ${String(e).slice(0, 60)}`);
@@ -151,7 +259,6 @@ export function useSync(
         }
       }
 
-      // Show debug summary in the UI so we can diagnose without DevTools
       if (allItems.length === 0) {
         patch({ phase: 'error', message: 'debug:' + debugLines.join('\n') });
         running.current = false;
@@ -166,30 +273,10 @@ export function useSync(
 
       patch({ phase: 'syncing', total: allItems.length });
 
-      if (allItems.length === 0) {
-        if (cursor) {
-          const ts = new Date().toISOString();
-          localStorage.setItem(CURSOR_KEY, ts);
-          setLastSync(new Date(ts));
-        }
-        patch({ phase: 'done', message: 'none' });
-        running.current = false;
-        return;
-      }
-
-      // ── 3. Get S3 client (credential provider auto-refreshes on expiry) ─
-      const s3 = new S3Client({
-        region: config.region,
-        credentials: async () => {
-          const s = await fetchAuthSession();
-          if (!s.credentials) throw new Error('Not authenticated');
-          return s.credentials as never;
-        },
-      });
-
+      // ── 3. Upload ─────────────────────────────────────────────────────
+      const s3 = makeS3();
       let uploaded = 0, skipped = 0, failed = 0;
       const privateHashes: string[] = [];
-      // album name → list of {hash, s3_key} for auto-tagging
       const tagMap: Record<string, { hash: string; s3_key: string }[]> = {};
       const syncNow   = new Date().toISOString();
       const syncBatch: { hash: string; s3_key: string; syncedAt: string }[] = [];
@@ -200,7 +287,7 @@ export function useSync(
           running.current = false;
           return;
         }
-        const { path, name, isCamera, albumName } = allItems[i];
+        const { path, name, shouldBePrivate, tagName } = allItems[i];
         patch({ processed: i + 1, uploaded, skipped, failed, message: name });
 
         try {
@@ -214,9 +301,9 @@ export function useSync(
           try {
             await s3.send(new HeadObjectCommand({ Bucket: config.bucketName, Key: key }));
             skipped++;
-            if (!isCamera) privateHashes.push(hash);
-            if (!tagMap[albumName]) tagMap[albumName] = [];
-            tagMap[albumName].push({ hash, s3_key: key });
+            if (shouldBePrivate) privateHashes.push(hash);
+            if (!tagMap[tagName]) tagMap[tagName] = [];
+            tagMap[tagName].push({ hash, s3_key: key });
             syncBatch.push({ hash, s3_key: key, syncedAt: syncNow });
             patch({ skipped });
             continue;
@@ -232,74 +319,18 @@ export function useSync(
           }));
 
           uploaded++;
-          if (!isCamera) privateHashes.push(hash);
-          if (!tagMap[albumName]) tagMap[albumName] = [];
-          tagMap[albumName].push({ hash, s3_key: key });
+          if (shouldBePrivate) privateHashes.push(hash);
+          if (!tagMap[tagName]) tagMap[tagName] = [];
+          tagMap[tagName].push({ hash, s3_key: key });
           syncBatch.push({ hash, s3_key: key, syncedAt: syncNow });
           patch({ uploaded });
-
         } catch {
           failed++;
           patch({ failed });
         }
       }
 
-      // Persist synced records for Latest tab (newest first, capped at 100)
-      if (syncBatch.length > 0) {
-        try {
-          const prev: { hash: string; s3_key: string; syncedAt: string }[] =
-            JSON.parse(localStorage.getItem(RECENT_SYNC_KEY) ?? '[]');
-          const prevHashes = new Set(prev.map(e => e.hash));
-          const newOnes = syncBatch.filter(e => !prevHashes.has(e.hash));
-          localStorage.setItem(RECENT_SYNC_KEY,
-            JSON.stringify([...newOnes, ...prev].slice(0, 100)));
-        } catch { /* ignore */ }
-      }
-
-      if (privateHashes.length > 0) {
-        await makePhotosPrivate(privateHashes);
-      }
-
-      // ── Auto-tag photos with their album/folder name ──────────────────
-      if (Object.keys(tagMap).length > 0) {
-        patch({ message: 'Saving tags…' });
-        const user    = await getCurrentUser();
-        const email   = user.signInDetails?.loginId ?? '';
-        const tagsKey = emailToTagsKey(email);
-        const now     = new Date().toISOString();
-
-        let existing: UserTags = { updated: '', tags: {}, comments: {}, commentTimes: {} };
-        try {
-          const r = await fetch(config.cloudFrontUrl + '/' + tagsKey + '?nc=' + Date.now());
-          if (r.ok) existing = await r.json() as UserTags;
-        } catch { /* start fresh */ }
-
-        const updatedTags = { ...existing.tags };
-        for (const [albumName, photos] of Object.entries(tagMap)) {
-          const prev       = updatedTags[albumName] ?? { photos: [], albums: [], createdAt: now };
-          const prevHashes = new Set((prev.photos as PhotoEntry[]).map(p => p.hash));
-          const newPhotos: PhotoEntry[] = photos
-            .filter(p => !prevHashes.has(p.hash))
-            .map(({ hash, s3_key }) => ({
-              hash, s3_key, thumb: null, dt: null,
-              lat: null, lng: null, w: null, h: null,
-            }));
-          if (newPhotos.length === 0) continue;
-          updatedTags[albumName] = { ...prev, photos: [...prev.photos, ...newPhotos] };
-        }
-
-        await s3.send(new PutObjectCommand({
-          Bucket:       config.bucketName,
-          Key:          tagsKey,
-          Body:         JSON.stringify({ ...existing, updated: now, tags: updatedTags }),
-          ContentType:  'application/json',
-          CacheControl: 'no-cache, no-store, must-revalidate',
-        }));
-      }
-
-      const ts = new Date().toISOString();
-      localStorage.setItem(CURSOR_KEY, ts);
-      setLastSync(new Date(ts));
+      await finalizeSyncBatch(s3, privateHashes, tagMap, syncBatch, patch);
       patch({ phase: 'done', message: '' });
 
     } catch (e) {
@@ -309,7 +340,96 @@ export function useSync(
       try { await wakeLock?.release(); } catch { /* ignore */ }
       running.current = false;
     }
-  }, [makePhotosPrivate]);
+  }, [makePhotosPrivate, finalizeSyncBatch]);
+
+  // Desktop sync — reads from a user-selected local folder (File objects from <input>)
+  const syncDesktop = useCallback(async (files: File[], cfg: AlbumConfig, folderName: string) => {
+    if (running.current) return;
+    running.current  = true;
+    stopFlag.current = false;
+    const patch = (p: Partial<SyncStatus>) => setStatus(prev => ({ ...prev, ...p }));
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let wakeLock: any = null;
+    if ('wakeLock' in navigator) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      try { wakeLock = await (navigator as any).wakeLock.request('screen'); } catch { /* ignore */ }
+    }
+
+    try {
+      const imageFiles = files.filter(f => IMAGE_EXTS.test(f.name));
+      if (imageFiles.length === 0) {
+        patch({ phase: 'done', message: 'none' });
+        running.current = false;
+        return;
+      }
+
+      patch({ phase: 'syncing', total: imageFiles.length });
+
+      const s3      = makeS3();
+      const tagName = deriveTagName(cfg, folderName);
+      let uploaded = 0, skipped = 0, failed = 0;
+      const privateHashes: string[] = [];
+      const tagMap: Record<string, { hash: string; s3_key: string }[]> = {};
+      const syncNow   = new Date().toISOString();
+      const syncBatch: { hash: string; s3_key: string; syncedAt: string }[] = [];
+
+      for (let i = 0; i < imageFiles.length; i++) {
+        if (stopFlag.current) {
+          patch({ phase: 'done', message: '' });
+          running.current = false;
+          return;
+        }
+        const file = imageFiles[i];
+        patch({ processed: i + 1, uploaded, skipped, failed, message: file.name });
+
+        try {
+          const blob = file as Blob;
+          const hash = await quickHash(blob);
+          const key  = s3Key(hash, file.name);
+
+          try {
+            await s3.send(new HeadObjectCommand({ Bucket: config.bucketName, Key: key }));
+            skipped++;
+            if (cfg.private) privateHashes.push(hash);
+            if (!tagMap[tagName]) tagMap[tagName] = [];
+            tagMap[tagName].push({ hash, s3_key: key });
+            syncBatch.push({ hash, s3_key: key, syncedAt: syncNow });
+            patch({ skipped });
+            continue;
+          } catch { /* not found — upload */ }
+
+          const buf = await blob.arrayBuffer();
+          await s3.send(new PutObjectCommand({
+            Bucket:       config.bucketName,
+            Key:          key,
+            Body:         new Uint8Array(buf),
+            ContentType:  blob.type || 'image/jpeg',
+            StorageClass: 'GLACIER_IR',
+          }));
+
+          uploaded++;
+          if (cfg.private) privateHashes.push(hash);
+          if (!tagMap[tagName]) tagMap[tagName] = [];
+          tagMap[tagName].push({ hash, s3_key: key });
+          syncBatch.push({ hash, s3_key: key, syncedAt: syncNow });
+          patch({ uploaded });
+        } catch {
+          failed++;
+          patch({ failed });
+        }
+      }
+
+      await finalizeSyncBatch(s3, privateHashes, tagMap, syncBatch, patch);
+      patch({ phase: 'done', message: '' });
+
+    } catch (e) {
+      patch({ phase: 'error', message: String(e) });
+    } finally {
+      try { await wakeLock?.release(); } catch { /* ignore */ }
+      running.current = false;
+    }
+  }, [makePhotosPrivate, finalizeSyncBatch]);
 
   const reset = useCallback(() => setStatus(IDLE), []);
 
@@ -331,7 +451,6 @@ export function useSync(
       const tagMap: Record<string, { hash: string; s3_key: string }[]> = {};
       let filesDone = 0;
 
-      // Process ALL albums — mark non-camera private + tag everything
       for (const album of albums) {
         let files: { name: string }[] = [];
         try { ({ files } = await Filesystem.readdir({ path: album.identifier })); }
@@ -363,30 +482,20 @@ export function useSync(
         }
       }
 
-      // Remove camera hashes from private.json (fix any wrongly-marked photos)
       if (cameraHashes.length > 0) {
         setFixResult(`Removing ${cameraHashes.length} camera photos from private list…`);
         await makePhotosPublic(cameraHashes);
       }
 
-      // Add non-camera hashes to private.json
       if (privateHashes.length > 0) {
         setFixResult(`Marking ${privateHashes.length} non-camera photos private…`);
         await makePhotosPrivate(privateHashes);
       }
 
-      // Write tags
       if (Object.keys(tagMap).length > 0) {
         setFixResult(`Writing tags for ${filesDone} photos…`);
         {
-          const s3 = new S3Client({
-            region: config.region,
-            credentials: async () => {
-              const s = await fetchAuthSession();
-              if (!s.credentials) throw new Error('Not authenticated');
-              return s.credentials as never;
-            },
-          });
+          const s3 = makeS3();
           const user    = await getCurrentUser();
           const email   = user.signInDetails?.loginId ?? '';
           const tagsKey = emailToTagsKey(email);
@@ -430,5 +539,10 @@ export function useSync(
     }
   }, [fixing, makePhotosPrivate, makePhotosPublic]);
 
-  return { status, lastSync, autoSync, setAutoSync, sync, stopSync, reset, isRunning: running, fixing, fixResult, markNonCameraPrivate };
+  return {
+    status, lastSync, autoSync, setAutoSync,
+    sync, syncDesktop, loadAlbums,
+    stopSync, reset, isRunning: running,
+    fixing, fixResult, markNonCameraPrivate,
+  };
 }

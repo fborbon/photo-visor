@@ -34,7 +34,7 @@ function AppInner({ signOut, email }: InnerProps) {
   const { lang, toggle, tr } = useLang();
   const { isOwner, makePhotosPrivate, makePhotosPublic } = usePrivacy();
   const { data: summary } = useIndex<Summary>('index/summary.json');
-  const { status: syncStatus, lastSync, autoSync, setAutoSync, sync, stopSync, fixing, fixResult, markNonCameraPrivate } = useSync(makePhotosPrivate, makePhotosPublic);
+  const { status: syncStatus, lastSync, autoSync, setAutoSync, sync, syncDesktop, loadAlbums, stopSync, fixing, fixResult, markNonCameraPrivate } = useSync(makePhotosPrivate, makePhotosPublic);
   const syncRef = useRef(sync);
   syncRef.current = sync;
   const { trackEvent } = useAnalytics();
@@ -106,7 +106,7 @@ function AppInner({ signOut, email }: InnerProps) {
               ⬆️ {tr.tabUpload}
             </button>
           )}
-          {isOwner && Capacitor.isNativePlatform() && (
+          {isOwner && (
             <button
               className={'tab-btn' + (tab === 'sync' ? ' active' : '') + (syncStatus.phase === 'syncing' || syncStatus.phase === 'enumerating' ? ' tab-btn--syncing' : '')}
               onClick={() => setTab('sync')}
@@ -154,10 +154,13 @@ function AppInner({ signOut, email }: InnerProps) {
                 autoSync={autoSync}
                 setAutoSync={setAutoSync}
                 onSyncNow={sync}
+                onSyncDesktop={syncDesktop}
                 onStopSync={stopSync}
                 fixing={fixing}
                 fixResult={fixResult}
                 onMarkNonCameraPrivate={markNonCameraPrivate}
+                onLoadAlbums={loadAlbums}
+                isNative={Capacitor.isNativePlatform()}
               />
             )}
           </TrashProvider>

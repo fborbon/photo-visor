@@ -37,6 +37,19 @@ export interface Summary {
 
 export type Tab = 'map' | 'timeline' | 'tags' | 'upload' | 'latest' | 'slots' | 'stats' | 'sync' | 'trash' | 'usage';
 
+export interface AlbumConfig {
+  sync:        boolean;
+  private:     boolean;
+  location:    string;
+  description: string;
+}
+
+export interface AlbumItem {
+  identifier: string;
+  name:       string;
+  isCamera:   boolean;
+}
+
 export interface MonthStat { ym: string; count: number; }
 export interface StatsIndex {
   generated: string;
