@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "deploy:web": "BASE_URL=/app/ NODE_OPTIONS=--experimental-global-webcrypto node_modules/.bin/vite build && aws s3 sync dist/ s3://photo-visor-295936871972/app/ --delete && aws cloudfront create-invalidation --distribution-id E2JW5PYKNPPYOB --paths \"/app/*\"",
     "deploy:android": "NODE_OPTIONS=--experimental-global-webcrypto node_modules/.bin/vite build && npx cap sync android && ANDROID_HOME=/home/patito/Android/Sdk JAVA_HOME=/home/patito/android-studio/jbr android/gradlew assembleDebug -p android && /home/patito/Android/Sdk/platform-tools/adb install -r android/app/build/outputs/apk/debug/app-debug.apk",
-    "deploy": "npm run deploy:web && npm run deploy:android",
+    "deploy": "echo 'Use deploy:web or deploy:android separately. Running both risks overwriting the S3 build.'",
     "build:demo": "vite build --config vite.config.demo.ts && mv dist-demo/index.demo.html dist-demo/index.html"
   },
   "dependencies": {
