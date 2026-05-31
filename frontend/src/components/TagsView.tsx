@@ -81,8 +81,11 @@ function PathTreeNode({ node, depth, expandedPaths, selectedPath, onToggle, onSe
   const isSelected  = selectedPath === node.fullPath;
 
   const handleRowClick = () => {
-    onSelect(node.fullPath, node.s3Path);
-    if (hasChildren) onToggle(node.fullPath);
+    if (hasChildren) {
+      onToggle(node.fullPath);   // intermediate folder → expand/collapse only
+    } else {
+      onSelect(node.fullPath, node.s3Path); // leaf folder → open photo grid
+    }
   };
 
   return (
@@ -412,12 +415,12 @@ export default function TagsView() {
           </>
         )}
 
-        {/* ══ Path Tags ══ */}
-        <SectionHeading open={pathOpen} onToggle={() => setPathOpen(v => !v)} style={{ marginTop: '1rem' }}>
+        {/* ══ Path Tags (owner only) ══ */}
+        {isOwner && <SectionHeading open={pathOpen} onToggle={() => setPathOpen(v => !v)} style={{ marginTop: '1rem' }}>
           📁 {tr.pathTags}
-        </SectionHeading>
+        </SectionHeading>}
 
-        {pathOpen && (
+        {isOwner && pathOpen && (
           <>
             <input
               className="sys-tag-filter"
