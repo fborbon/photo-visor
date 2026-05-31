@@ -3,7 +3,7 @@ import { useTags }    from '../context/TagsContext';
 import { useLang }    from '../context/LangContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { useIndex }   from '../hooks/useIndex';
-import { PhotoEntry, Summary } from '../types';
+import { PhotoEntry } from '../types';
 import PhotoGrid from './PhotoGrid';
 import { sysTagCountryKey, sysTagCityKey, sysTagLabel, translateCountry, translateCity } from '../utils/sysTags';
 import { displayNameForEmail } from '../config';
@@ -16,71 +16,55 @@ const MAX_RAIL = 600;
 const DEFAULT_RAIL = 273;
 
 // ── Path tree ──────────────────────────────────────────────────────────────
-// S3 root folders that map to hidden (dot-prefixed) folders on disk.
-// Everything else lives under Fotos/Camera/.
-const DOT_ROOTS: Record<string, string> = { Amigos: '.Amigos', Whatsapp: '.Whatsapp' };
+// Source of truth: index/folder_paths.json — exact disk paths relative to Fotos/
+// e.g. "Camera/Europa/España/Navarra/Pamplona/Despedida Fabs - Junio 2016/fer"
+//
+// S3 key derivation:
+//   Camera/A/B  →  strip "Camera/", replace spaces with underscores → A_disk/B_disk
+//   {other}/A/B →  replace spaces with underscores (no prefix strip)
 
-/** Convert an S3 general-index path to its real disk path (without the Fotos/ prefix). */
-function s3ToVirtual(s3Path: string): string {
-  const slash  = s3Path.indexOf('/');
-  const s3Root = slash >= 0 ? s3Path.slice(0, slash) : s3Path;
-  const rest   = slash >= 0 ? s3Path.slice(slash + 1) : '';
-
-  const segsToDisplay = (raw: string) => raw.split('/').map(s => s.replace(/_/g, ' ')).join('/');
-
-  if (DOT_ROOTS[s3Root]) {
-    const dotRoot = DOT_ROOTS[s3Root];
-    return rest ? dotRoot + '/' + segsToDisplay(rest) : dotRoot;
-  }
-  return 'Camera/' + segsToDisplay(s3Path);
+function diskPathToS3(diskPath: string): string {
+  const noCamera = diskPath.startsWith('Camera/')
+    ? diskPath.slice('Camera/'.length)
+    : diskPath;
+  return noCamera.split('/').map(s => s.replace(/ /g, '_')).join('/');
 }
 
 interface TreeNode {
-  name:     string;   // display segment name (spaces, with dot if hidden folder)
-  fullPath: string;   // virtual display path – used as the selection key
-  s3Path:   string;   // original S3 path – used for index/general/{s3Path}.json
-  hasIndex: boolean;  // whether an index file exists for this s3Path
+  name:     string;   // exact disk folder name (with spaces, dashes, etc.)
+  fullPath: string;   // disk path from Fotos/ root — selection key
+  s3Path:   string;   // S3 index key for index/general/{s3Path}.json
   children: Record<string, TreeNode>;
 }
 
-function buildPathTree(s3Paths: string[]): Record<string, TreeNode> {
-  const s3PathSet = new Set(s3Paths);
+function buildPathTree(diskPaths: string[]): Record<string, TreeNode> {
   const root: Record<string, TreeNode> = {};
 
-  for (const s3Path of s3Paths) {
-    const s3Segs = s3Path.split('/');
-    const s3Root = s3Segs[0];
-    const isDot  = s3Root in DOT_ROOTS;
-
-    // Virtual segments for tree display
-    const vSegs: string[] = isDot
-      ? [DOT_ROOTS[s3Root], ...s3Segs.slice(1).map(s => s.replace(/_/g, ' '))]
-      : ['Camera',          ...s3Segs.map(s => s.replace(/_/g, ' '))];
-
+  for (const diskPath of diskPaths) {
+    const segs = diskPath.split('/');
     let cur = root;
-    for (let vi = 0; vi < vSegs.length; vi++) {
-      const vseg  = vSegs[vi];
-      const vPath = vSegs.slice(0, vi + 1).join('/');
-
-      // S3 path for this tree node (used to load index/general/{s3Path}.json)
-      const nodeS3 = isDot
-        ? s3Segs.slice(0, vi + 1).join('/')   // vi=0→s3Root, vi=1→s3Root/seg1, …
-        : vi === 0 ? '' : s3Segs.slice(0, vi).join('/'); // vi=0→Camera(virtual), vi=1→s3Segs[0], …
-
-      if (!cur[vseg]) {
-        cur[vseg] = {
-          name:     vseg,
-          fullPath: vPath,
-          s3Path:   nodeS3,
-          hasIndex: s3PathSet.has(nodeS3),
+    for (let i = 0; i < segs.length; i++) {
+      const seg      = segs[i];
+      const nodePath = segs.slice(0, i + 1).join('/');
+      if (!cur[seg]) {
+        cur[seg] = {
+          name:     seg,
+          fullPath: nodePath,
+          s3Path:   diskPathToS3(nodePath),
           children: {},
         };
       }
-      cur = cur[vseg].children;
+      cur = cur[seg].children;
     }
   }
   return root;
 }
+
+/** Display path shown to the user: Fotos/ + exact disk path. */
+function diskPathToDisplay(diskPath: string): string {
+  return 'Fotos/' + diskPath;
+}
+
 
 interface PathTreeNodeProps {
   node:          TreeNode;
@@ -153,9 +137,9 @@ function SectionHeading({ open, onToggle, children, style }: SectionHeadingProps
   );
 }
 
-/** Render a virtual path as a human-readable breadcrumb. */
-function folderFullLabel(virtualPath: string) {
-  return 'Fotos/' + virtualPath.replace(/\//g, ' / ');
+/** Render a disk path as a human-readable breadcrumb with Fotos/ prefix. */
+function folderFullLabel(diskPath: string) {
+  return diskPathToDisplay(diskPath).replace(/\//g, ' / ');
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
@@ -184,18 +168,18 @@ export default function TagsView() {
     });
   }, []);
 
-  // Summary for general_folders
-  const { data: summary } = useIndex<Summary>('index/summary.json');
-  const folderPaths = useMemo(() => summary?.general_folders ?? [], [summary]);
+  // Exact disk paths from Fotos/ (parsed from folders.txt and stored in S3)
+  const { data: folderPathsData } = useIndex<string[]>('index/folder_paths.json');
+  const folderPaths = useMemo(() => folderPathsData ?? [], [folderPathsData]);
 
   // Build tree from flat list
   const pathTree = useMemo(() => buildPathTree(folderPaths), [folderPaths]);
 
-  // Flat filtered list (used when search is active) — search on virtual display path
+  // Flat filtered list (used when search is active) — search on full display path
   const filteredPaths = useMemo(() => {
     if (!pathFilter.trim()) return [];
     const q = pathFilter.toLowerCase();
-    return folderPaths.filter(p => s3ToVirtual(p).toLowerCase().includes(q));
+    return folderPaths.filter(p => diskPathToDisplay(p).toLowerCase().includes(q));
   }, [folderPaths, pathFilter]);
 
   // Resizable panel
@@ -245,10 +229,11 @@ export default function TagsView() {
     sel?.scope === 'system' && sel.slug ? `index/sys/${sel.slug}.json` : null
   );
 
-  // Lazy-load path tag photos (use s3Path for the actual index file)
+  // Lazy-load path tag photos using the derived S3 key
   const { data: pathPhotos, loading: pathLoading } = useIndex<PhotoEntry[]>(
     sel?.scope === 'path' && sel.s3Path ? `index/general/${sel.s3Path}.json` : null
   );
+
 
   // Group shared tags by owner
   const tagsByOwner = useMemo(() => {
@@ -445,14 +430,13 @@ export default function TagsView() {
             {pathFilter.trim() ? (
               filteredPaths.length === 0
                 ? <p className="tags-empty-hint">{tr.noTagsMatch}</p>
-                : filteredPaths.map(s3 => {
-                  const vPath = s3ToVirtual(s3);
-                  const label = folderFullLabel(vPath);
+                : filteredPaths.map(diskPath => {
+                  const label = folderFullLabel(diskPath);
                   return (
                     <button
-                      key={'fp:' + s3}
-                      className={'tag-rail-btn sys-tag sys-tag-city' + (sel?.s3Path === s3 && sel.scope === 'path' ? ' active' : '')}
-                      onClick={() => select(vPath, 'path', undefined, s3)}
+                      key={'fp:' + diskPath}
+                      className={'tag-rail-btn sys-tag sys-tag-city' + (sel?.name === diskPath && sel.scope === 'path' ? ' active' : '')}
+                      onClick={() => select(diskPath, 'path', undefined, diskPathToS3(diskPath))}
                       title={label}
                     >
                       <span className="tag-rail-name">{label}</span>
@@ -473,7 +457,7 @@ export default function TagsView() {
                         expandedPaths={expandedPaths}
                         selectedPath={sel?.scope === 'path' ? sel.name : null}
                         onToggle={toggleExpanded}
-                        onSelect={(vPath, s3Path) => select(vPath, 'path', undefined, s3Path)}
+                        onSelect={(diskPath, s3Path) => select(diskPath, 'path', undefined, s3Path)}
                       />
                     ))
             )}
@@ -590,7 +574,7 @@ export default function TagsView() {
         {sel?.scope === 'path' && (
           <>
             <div className="tags-header">
-              <h2 className="tags-selected-name">📁 {folderFullLabel(sel.name)}</h2>
+              <h2 className="tags-selected-name">📁 {diskPathToDisplay(sel.name)}</h2>
             </div>
             {pathLoading && <p className="panel-loading">{tr.loading}</p>}
             {pathPhotos && pathPhotos.length === 0 && (
