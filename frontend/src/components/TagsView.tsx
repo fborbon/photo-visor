@@ -9,39 +9,74 @@ import { sysTagCountryKey, sysTagCityKey, sysTagLabel, translateCountry, transla
 import { displayNameForEmail } from '../config';
 
 type Scope = 'private' | 'shared' | 'system' | 'path';
-interface Selected { name: string; scope: Scope; slug?: string; }
+interface Selected { name: string; s3Path?: string; scope: Scope; slug?: string; }
 
 const MIN_RAIL = 150;
 const MAX_RAIL = 600;
 const DEFAULT_RAIL = 273;
 
 // ── Path tree ──────────────────────────────────────────────────────────────
+// S3 root folders that map to hidden (dot-prefixed) folders on disk.
+// Everything else lives under Fotos/Camera/.
+const DOT_ROOTS: Record<string, string> = { Amigos: '.Amigos', Whatsapp: '.Whatsapp' };
+
+/** Convert an S3 general-index path to its real disk path (without the Fotos/ prefix). */
+function s3ToVirtual(s3Path: string): string {
+  const slash  = s3Path.indexOf('/');
+  const s3Root = slash >= 0 ? s3Path.slice(0, slash) : s3Path;
+  const rest   = slash >= 0 ? s3Path.slice(slash + 1) : '';
+
+  const segsToDisplay = (raw: string) => raw.split('/').map(s => s.replace(/_/g, ' ')).join('/');
+
+  if (DOT_ROOTS[s3Root]) {
+    const dotRoot = DOT_ROOTS[s3Root];
+    return rest ? dotRoot + '/' + segsToDisplay(rest) : dotRoot;
+  }
+  return 'Camera/' + segsToDisplay(s3Path);
+}
+
 interface TreeNode {
-  name:     string;          // display name (underscores → spaces)
-  fullPath: string;          // e.g. "Latinoamerica/Costa_Rica/Familia"
-  hasIndex: boolean;         // true when index/general/{fullPath}.json exists
+  name:     string;   // display segment name (spaces, with dot if hidden folder)
+  fullPath: string;   // virtual display path – used as the selection key
+  s3Path:   string;   // original S3 path – used for index/general/{s3Path}.json
+  hasIndex: boolean;  // whether an index file exists for this s3Path
   children: Record<string, TreeNode>;
 }
 
-function buildPathTree(paths: string[]): Record<string, TreeNode> {
-  const pathSet = new Set(paths);
+function buildPathTree(s3Paths: string[]): Record<string, TreeNode> {
+  const s3PathSet = new Set(s3Paths);
   const root: Record<string, TreeNode> = {};
 
-  for (const fullPath of paths) {
-    const segments = fullPath.split('/');
+  for (const s3Path of s3Paths) {
+    const s3Segs = s3Path.split('/');
+    const s3Root = s3Segs[0];
+    const isDot  = s3Root in DOT_ROOTS;
+
+    // Virtual segments for tree display
+    const vSegs: string[] = isDot
+      ? [DOT_ROOTS[s3Root], ...s3Segs.slice(1).map(s => s.replace(/_/g, ' '))]
+      : ['Camera',          ...s3Segs.map(s => s.replace(/_/g, ' '))];
+
     let cur = root;
-    for (let i = 0; i < segments.length; i++) {
-      const seg      = segments[i];
-      const nodePath = segments.slice(0, i + 1).join('/');
-      if (!cur[seg]) {
-        cur[seg] = {
-          name:     seg.replace(/_/g, ' '),
-          fullPath: nodePath,
-          hasIndex: pathSet.has(nodePath),
+    for (let vi = 0; vi < vSegs.length; vi++) {
+      const vseg  = vSegs[vi];
+      const vPath = vSegs.slice(0, vi + 1).join('/');
+
+      // S3 path for this tree node (used to load index/general/{s3Path}.json)
+      const nodeS3 = isDot
+        ? s3Segs.slice(0, vi + 1).join('/')   // vi=0→s3Root, vi=1→s3Root/seg1, …
+        : vi === 0 ? '' : s3Segs.slice(0, vi).join('/'); // vi=0→Camera(virtual), vi=1→s3Segs[0], …
+
+      if (!cur[vseg]) {
+        cur[vseg] = {
+          name:     vseg,
+          fullPath: vPath,
+          s3Path:   nodeS3,
+          hasIndex: s3PathSet.has(nodeS3),
           children: {},
         };
       }
-      cur = cur[seg].children;
+      cur = cur[vseg].children;
     }
   }
   return root;
@@ -53,7 +88,7 @@ interface PathTreeNodeProps {
   expandedPaths: Set<string>;
   selectedPath:  string | null;
   onToggle:      (path: string) => void;
-  onSelect:      (path: string) => void;
+  onSelect:      (vPath: string, s3Path: string) => void;
 }
 
 function PathTreeNode({ node, depth, expandedPaths, selectedPath, onToggle, onSelect }: PathTreeNodeProps) {
@@ -62,7 +97,7 @@ function PathTreeNode({ node, depth, expandedPaths, selectedPath, onToggle, onSe
   const isSelected  = selectedPath === node.fullPath;
 
   const handleRowClick = () => {
-    onSelect(node.fullPath);
+    onSelect(node.fullPath, node.s3Path);
     if (hasChildren) onToggle(node.fullPath);
   };
 
@@ -118,8 +153,9 @@ function SectionHeading({ open, onToggle, children, style }: SectionHeadingProps
   );
 }
 
-function folderFullLabel(path: string) {
-  return path.replace(/_/g, ' ').replace(/\//g, ' / ');
+/** Render a virtual path as a human-readable breadcrumb. */
+function folderFullLabel(virtualPath: string) {
+  return 'Fotos/' + virtualPath.replace(/\//g, ' / ');
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
@@ -155,11 +191,11 @@ export default function TagsView() {
   // Build tree from flat list
   const pathTree = useMemo(() => buildPathTree(folderPaths), [folderPaths]);
 
-  // Flat filtered list (used when search is active)
+  // Flat filtered list (used when search is active) — search on virtual display path
   const filteredPaths = useMemo(() => {
     if (!pathFilter.trim()) return [];
     const q = pathFilter.toLowerCase();
-    return folderPaths.filter(p => p.toLowerCase().replace(/_/g, ' ').includes(q));
+    return folderPaths.filter(p => s3ToVirtual(p).toLowerCase().includes(q));
   }, [folderPaths, pathFilter]);
 
   // Resizable panel
@@ -209,9 +245,9 @@ export default function TagsView() {
     sel?.scope === 'system' && sel.slug ? `index/sys/${sel.slug}.json` : null
   );
 
-  // Lazy-load path tag photos
+  // Lazy-load path tag photos (use s3Path for the actual index file)
   const { data: pathPhotos, loading: pathLoading } = useIndex<PhotoEntry[]>(
-    sel?.scope === 'path' ? `index/general/${sel.name}.json` : null
+    sel?.scope === 'path' && sel.s3Path ? `index/general/${sel.s3Path}.json` : null
   );
 
   // Group shared tags by owner
@@ -262,8 +298,8 @@ export default function TagsView() {
   const canDelete = (name: string, scope: Scope) =>
     scope === 'private' || (scope === 'shared' && isMySharedTag(name));
 
-  const select = (name: string, scope: Scope, slug?: string) => {
-    setSel({ name, scope, slug });
+  const select = (name: string, scope: Scope, slug?: string, s3Path?: string) => {
+    setSel({ name, scope, slug, s3Path });
     setExpandedAlbum(null);
     mainRef.current?.scrollTo({ top: 0, behavior: 'instant' });
   };
@@ -409,16 +445,20 @@ export default function TagsView() {
             {pathFilter.trim() ? (
               filteredPaths.length === 0
                 ? <p className="tags-empty-hint">{tr.noTagsMatch}</p>
-                : filteredPaths.map(path => (
-                  <button
-                    key={'fp:' + path}
-                    className={'tag-rail-btn sys-tag sys-tag-city' + (sel?.name === path && sel.scope === 'path' ? ' active' : '')}
-                    onClick={() => select(path, 'path')}
-                    title={folderFullLabel(path)}
-                  >
-                    <span className="tag-rail-name">{folderFullLabel(path)}</span>
-                  </button>
-                ))
+                : filteredPaths.map(s3 => {
+                  const vPath = s3ToVirtual(s3);
+                  const label = folderFullLabel(vPath);
+                  return (
+                    <button
+                      key={'fp:' + s3}
+                      className={'tag-rail-btn sys-tag sys-tag-city' + (sel?.s3Path === s3 && sel.scope === 'path' ? ' active' : '')}
+                      onClick={() => select(vPath, 'path', undefined, s3)}
+                      title={label}
+                    >
+                      <span className="tag-rail-name">{label}</span>
+                    </button>
+                  );
+                })
             ) : (
               /* No filter → tree view */
               folderPaths.length === 0
@@ -433,7 +473,7 @@ export default function TagsView() {
                         expandedPaths={expandedPaths}
                         selectedPath={sel?.scope === 'path' ? sel.name : null}
                         onToggle={toggleExpanded}
-                        onSelect={path => select(path, 'path')}
+                        onSelect={(vPath, s3Path) => select(vPath, 'path', undefined, s3Path)}
                       />
                     ))
             )}
