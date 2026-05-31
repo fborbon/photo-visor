@@ -16,32 +16,26 @@ const MAX_RAIL = 600;
 const DEFAULT_RAIL = 273;
 
 // ── Path tree ──────────────────────────────────────────────────────────────
-// Source of truth: index/folder_paths.json — exact disk paths relative to Fotos/
-// e.g. "Camera/Europa/España/Navarra/Pamplona/Despedida Fabs - Junio 2016/fer"
-//
-// S3 key derivation:
-//   Camera/A/B  →  strip "Camera/", replace spaces with underscores → A_disk/B_disk
-//   {other}/A/B →  replace spaces with underscores (no prefix strip)
+// Source of truth: index/path_tags.json
+// Each entry: { display: "disk-style path", s3: "S3 general-index key" }
+// Built by cross-referencing the actual S3 index against folders.txt.
+// display = exact disk name where available; underscore→space fallback otherwise.
 
-function diskPathToS3(diskPath: string): string {
-  const noCamera = diskPath.startsWith('Camera/')
-    ? diskPath.slice('Camera/'.length)
-    : diskPath;
-  return noCamera.split('/').map(s => s.replace(/ /g, '_')).join('/');
-}
+interface TagPath { display: string; s3: string; }
 
 interface TreeNode {
-  name:     string;   // exact disk folder name (with spaces, dashes, etc.)
-  fullPath: string;   // disk path from Fotos/ root — selection key
-  s3Path:   string;   // S3 index key for index/general/{s3Path}.json
+  name:     string;   // last segment of display path
+  fullPath: string;   // full display path — selection key
+  s3Path:   string;   // S3 key for index/general/{s3Path}.json (empty = intermediate)
   children: Record<string, TreeNode>;
 }
 
-function buildPathTree(diskPaths: string[]): Record<string, TreeNode> {
+function buildPathTree(tagPaths: TagPath[]): Record<string, TreeNode> {
+  const s3Map = new Map(tagPaths.map(t => [t.display, t.s3]));
   const root: Record<string, TreeNode> = {};
 
-  for (const diskPath of diskPaths) {
-    const segs = diskPath.split('/');
+  for (const { display } of tagPaths) {
+    const segs = display.split('/');
     let cur = root;
     for (let i = 0; i < segs.length; i++) {
       const seg      = segs[i];
@@ -50,7 +44,7 @@ function buildPathTree(diskPaths: string[]): Record<string, TreeNode> {
         cur[seg] = {
           name:     seg,
           fullPath: nodePath,
-          s3Path:   diskPathToS3(nodePath),
+          s3Path:   s3Map.get(nodePath) ?? '',
           children: {},
         };
       }
@@ -60,9 +54,8 @@ function buildPathTree(diskPaths: string[]): Record<string, TreeNode> {
   return root;
 }
 
-/** Display path shown to the user: Fotos/ + exact disk path. */
-function diskPathToDisplay(diskPath: string): string {
-  return 'Fotos/' + diskPath;
+function diskPathToDisplay(displayPath: string): string {
+  return 'Fotos/' + displayPath;
 }
 
 
@@ -171,12 +164,13 @@ export default function TagsView() {
     });
   }, []);
 
-  // Exact disk paths from Fotos/ (parsed from folders.txt and stored in S3)
-  const { data: folderPathsData } = useIndex<string[]>('index/folder_paths.json');
-  const folderPaths = useMemo(() => folderPathsData ?? [], [folderPathsData]);
+  // Path tags: {display, s3}[] — every entry has a real S3 index file
+  const { data: tagPathsData } = useIndex<TagPath[]>('index/path_tags.json');
+  const tagPaths   = useMemo(() => tagPathsData ?? [], [tagPathsData]);
+  const folderPaths = useMemo(() => tagPaths.map(t => t.display), [tagPaths]);
 
-  // Build tree from flat list
-  const pathTree = useMemo(() => buildPathTree(folderPaths), [folderPaths]);
+  // Build tree from display paths (with S3 keys stored per node)
+  const pathTree = useMemo(() => buildPathTree(tagPaths), [tagPaths]);
 
   // Flat filtered list (used when search is active) — search on full display path
   const filteredPaths = useMemo(() => {
@@ -433,19 +427,21 @@ export default function TagsView() {
             {pathFilter.trim() ? (
               filteredPaths.length === 0
                 ? <p className="tags-empty-hint">{tr.noTagsMatch}</p>
-                : filteredPaths.map(diskPath => {
-                  const label = folderFullLabel(diskPath);
-                  return (
-                    <button
-                      key={'fp:' + diskPath}
-                      className={'tag-rail-btn sys-tag sys-tag-city' + (sel?.name === diskPath && sel.scope === 'path' ? ' active' : '')}
-                      onClick={() => select(diskPath, 'path', undefined, diskPathToS3(diskPath))}
-                      title={label}
-                    >
-                      <span className="tag-rail-name">{label}</span>
-                    </button>
-                  );
-                })
+                : tagPaths
+                  .filter(t => diskPathToDisplay(t.display).toLowerCase().includes(pathFilter.toLowerCase()))
+                  .map(({ display, s3 }) => {
+                    const label = folderFullLabel(display);
+                    return (
+                      <button
+                        key={'fp:' + s3}
+                        className={'tag-rail-btn sys-tag sys-tag-city' + (sel?.name === display && sel.scope === 'path' ? ' active' : '')}
+                        onClick={() => select(display, 'path', undefined, s3)}
+                        title={label}
+                      >
+                        <span className="tag-rail-name">{label}</span>
+                      </button>
+                    );
+                  })
             ) : (
               /* No filter → tree view */
               folderPaths.length === 0
