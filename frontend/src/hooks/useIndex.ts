@@ -25,7 +25,16 @@ export function useIndex<T>(path: string | null): { data: T | null; loading: boo
   const [error, setError]     = useState<string | null>(null);
 
   useEffect(() => {
-    if (!path) return;
+    if (!path) {
+      setData(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    // Reset stale data immediately so the previous folder's photos don't linger
+    setData(null);
+    setError(null);
 
     if (cache.has(path)) {
       setData(cache.get(path) as T);
@@ -33,7 +42,6 @@ export function useIndex<T>(path: string | null): { data: T | null; loading: boo
     }
 
     setLoading(true);
-    setError(null);
 
     fetchJson<T>(config.cloudFrontUrl + '/' + path)
       .then(d => {

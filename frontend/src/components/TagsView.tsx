@@ -580,6 +580,9 @@ export default function TagsView() {
               <h2 className="tags-selected-name">📁 {diskPathToDisplay(sel.name)}</h2>
             </div>
             {pathLoading && <p className="panel-loading">{tr.loading}</p>}
+            {!pathLoading && pathPhotos === null && (
+              <p className="panel-loading" style={{ color: '#555' }}>No photos indexed for this folder.</p>
+            )}
             {pathPhotos && pathPhotos.length === 0 && (
               <p className="panel-loading">{tr.noTaggedPhotos}</p>
             )}
