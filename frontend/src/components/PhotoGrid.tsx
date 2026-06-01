@@ -49,6 +49,34 @@ function commentPreview(text: string, max = 38): string {
   return text.length > max ? text.slice(0, max) + '…' : text;
 }
 
+/**
+ * Extract the descriptive part of a photo path using the location-description
+ * splitting schema: Camera/Continent/Country/[Region]/[City]/[Place]/DESCRIPTION...
+ * Finds the last segment matching city or country, returns everything after it.
+ */
+function extractDescription(folder: string | undefined | null,
+                             city:   string | undefined | null,
+                             country: string | undefined | null): string | null {
+  if (!folder) return null;
+  const segs = folder.split('/');
+  // Try city first, then country as the geographic anchor
+  const geoAnchor = (city && isValidPlace(city) ? city : null)
+                 ?? (country && isValidPlace(country) ? country : null);
+  if (!geoAnchor) return null;
+  const norm = (s: string) => s.toLowerCase().replace(/_/g, ' ').trim();
+  const anchorNorm = norm(geoAnchor);
+  let splitIdx = -1;
+  for (let i = 0; i < segs.length; i++) {
+    const sn = norm(segs[i]);
+    if (sn === anchorNorm || sn.startsWith(anchorNorm) || anchorNorm.startsWith(sn)) {
+      splitIdx = i;
+    }
+  }
+  if (splitIdx === -1) return null;
+  const descSegs = segs.slice(splitIdx + 1).filter(s => s.length > 0);
+  return descSegs.length > 0 ? descSegs.join(' / ') : null;
+}
+
 function shortModel(model: string): string {
   return model.replace(/^SM-/i, '').replace(/^DMC-/i, '').slice(0, 7);
 }
@@ -272,11 +300,12 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
       {/* ── Photo grid ─────────────────────────────────────── */}
       <div className={'photo-grid' + (hasSelection ? ' has-selection' : '')}>
         {visible.map((p, i) => {
-          const locked   = isPhotoPrivate(p.hash) || albumPrivate;
-          const place    = formatPlace(p, placeFallback);
-          const dateFmt  = formatDate(p.dt, tr.months);
-          const comment  = getComment(p.hash);
-          const isSelected = selection.has(i);
+          const locked      = isPhotoPrivate(p.hash) || albumPrivate;
+          const place       = formatPlace(p, placeFallback);
+          const description = extractDescription(p.folder, p.city, p.country);
+          const dateFmt     = formatDate(p.dt, tr.months);
+          const comment     = getComment(p.hash);
+          const isSelected  = selection.has(i);
 
           return (
             <div
@@ -303,12 +332,12 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
                   : <div className="thumb-placeholder">🎬</div>
                 }
 
-                {/* Centered hover overlay */}
-                {(place || dateFmt || comment) && (
+                {/* Centered hover overlay — 3 lines: description / city,country / date */}
+                {(description || place || dateFmt) && (
                   <div className="thumb-tooltip">
-                    {place   && <span className="tt-place">{place}</span>}
-                    {dateFmt && <span className="tt-date">{dateFmt}</span>}
-                    {comment && <span className="tt-comment">{commentPreview(comment)}</span>}
+                    {description && <span className="tt-desc">{description}</span>}
+                    {place       && <span className="tt-place">{place}</span>}
+                    {dateFmt     && <span className="tt-date">{dateFmt}</span>}
                   </div>
                 )}
 
