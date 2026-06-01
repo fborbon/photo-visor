@@ -165,11 +165,16 @@ export default function TagsView() {
   }, []);
 
   // Path tags: {display, s3}[] — every entry has a real S3 index file
+  // Non-owners only see Camera/ subtree
   const { data: tagPathsData } = useIndex<TagPath[]>('index/path_tags.json');
-  const tagPaths   = useMemo(() => tagPathsData ?? [], [tagPathsData]);
+  const tagPaths   = useMemo(() => {
+    const all = tagPathsData ?? [];
+    if (isOwner) return all;
+    return all.filter(t => t.display.startsWith('Camera/'));
+  }, [tagPathsData, isOwner]);
   const folderPaths = useMemo(() => tagPaths.map(t => t.display), [tagPaths]);
 
-  // Build tree from display paths (with S3 keys stored per node)
+  // Build tree — non-owners only see Camera/ subtree
   const pathTree = useMemo(() => buildPathTree(tagPaths), [tagPaths]);
 
   // Flat filtered list (used when search is active) — search on full display path
@@ -354,67 +359,12 @@ export default function TagsView() {
           </>
         )}
 
-        {/* ══ System Tags ══ */}
-        <SectionHeading open={systemOpen} onToggle={() => setSystemOpen(v => !v)} style={{ marginTop: '1rem' }}>
-          🗂 {tr.systemTags}
+        {/* ══ Path Tags — all users; non-owners see Camera/ only ══ */}
+        <SectionHeading open={pathOpen} onToggle={() => setPathOpen(v => !v)} style={{ marginTop: '1rem' }}>
+          📁 {tr.pathTags}
         </SectionHeading>
 
-        {systemOpen && (
-          <>
-            <input
-              className="sys-tag-filter"
-              placeholder={tr.filterTags}
-              value={sysFilter}
-              onChange={e => setSysFilter(e.target.value)}
-            />
-            {systemTagsLoading && <p className="tags-empty-hint">{tr.loading}</p>}
-            {!systemTagsLoading && sysTagNames.length === 0 && (
-              <p className="tags-empty-hint">{sysFilter ? tr.noTagsMatch : tr.noSystemTags}</p>
-            )}
-            {sysTagsByCountry.map(({ country, cities }) => (
-              <div key={'c:' + country} className="sys-country-group">
-                <div className="sys-country-heading">{translateCountry(country, lang)}</div>
-                {cities.map(({ city, names }) => {
-                  const showCityHeader = city !== '' &&
-                    (names.length > 1 || sysTagLabel(names[0]) !== city);
-                  return (
-                    <div key={'city:' + country + ':' + city} className="sys-city-group">
-                      {showCityHeader && (
-                        <div className="sys-city-heading">{translateCity(city, lang)}</div>
-                      )}
-                      {names.map(name => {
-                        const meta  = systemTagIndex.tags[name];
-                        const label = sysTagLabel(name);
-                        const cls =
-                          'tag-rail-btn sys-tag' +
-                          (showCityHeader ? ' sys-tag-item' : ' sys-tag-city') +
-                          (sel?.name === name && sel.scope === 'system' ? ' active' : '');
-                        return (
-                          <button
-                            key={'sys:' + name}
-                            className={cls}
-                            onClick={() => select(name, 'system', meta.slug)}
-                            title={name}
-                          >
-                            <span className="tag-rail-name">{label}</span>
-                            <span className="tag-rail-count">{meta.count}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </>
-        )}
-
-        {/* ══ Path Tags (owner only) ══ */}
-        {isOwner && <SectionHeading open={pathOpen} onToggle={() => setPathOpen(v => !v)} style={{ marginTop: '1rem' }}>
-          📁 {tr.pathTags}
-        </SectionHeading>}
-
-        {isOwner && pathOpen && (
+        {pathOpen && (
           <>
             <input
               className="sys-tag-filter"
