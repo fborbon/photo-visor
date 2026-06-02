@@ -78,17 +78,6 @@ NON_GEO_ROOTS = {
     "Ordenar", "Otros", "Películas", "Wallpapers",
 }
 
-# .Amigos folder-name country prefix → (sys-tag Spanish name, English for geocoding, continent)
-_AMIGOS_COUNTRY_MAP: dict[str, tuple[str, str, str]] = {
-    "Australia":   ("Australia",  "Australia",   "Oceania"),
-    "Brasil":      ("Brasil",     "Brazil",      "South America"),
-    "Costa Rica":  ("Costa Rica", "Costa Rica",  "Central America"),
-    "España":      ("España",     "Spain",       "Europe"),
-    "Germany":     ("Alemania",   "Germany",     "Europe"),
-    "Netherlands": ("Holanda",    "Netherlands", "Europe"),
-    "Portugal":    ("Portugal",   "Portugal",    "Europe"),
-}
-
 # Spanish (and other) country names → English for Nominatim
 COUNTRY_NORMALIZE = {
     "España": "Spain", "Francia": "France", "Alemania": "Germany",
@@ -109,7 +98,55 @@ COUNTRY_NORMALIZE = {
     "USA": "USA",
     "Japón": "Japan", "Tailandia": "Thailand",
     "Australia": "Australia", "UAE": "UAE",
+    # Added for .Amigos / .Whatsapp new country-first structure
+    "Panamá": "Panama", "Salvador": "El Salvador", "Indonesia": "Indonesia",
+    "Brasil": "Brazil", "México": "Mexico",
 }
+
+# Country (English) → continent — used for .Amigos and .Whatsapp geo returns
+_COUNTRY_CONTINENT: dict[str, str] = {
+    "Spain": "Europe", "France": "Europe", "Germany": "Europe",
+    "Netherlands": "Europe", "Portugal": "Europe", "Belgium": "Europe",
+    "Denmark": "Europe", "Norway": "Europe", "England": "Europe",
+    "Ireland": "Europe", "Greece": "Europe", "Hungary": "Europe",
+    "Poland": "Europe", "Switzerland": "Europe", "Turkey": "Europe",
+    "Austria": "Europe", "Slovakia": "Europe", "Czech Republic": "Europe",
+    "Croatia": "Europe", "Italy": "Europe", "Estonia": "Europe",
+    "Finland": "Europe", "Sweden": "Europe", "Monaco": "Europe",
+    "Andorra": "Europe", "Israel": "Middle East",
+    "Costa Rica": "Central America", "Panama": "Central America",
+    "El Salvador": "Central America", "Guatemala": "Central America",
+    "Cuba": "Caribbean", "Mexico": "North America",
+    "USA": "North America", "Canada": "North America",
+    "Brazil": "South America", "Argentina": "South America",
+    "Chile": "South America", "Colombia": "South America",
+    "Peru": "South America", "Bolivia": "South America", "Uruguay": "South America",
+    "Egypt": "Africa",
+    "Japan": "Asia", "Thailand": "Asia", "UAE": "Asia", "Indonesia": "Asia",
+    "Australia": "Oceania",
+}
+
+# Folders whose photos should have NO geographic location (general only)
+# Populated at runtime from no_location.txt marker files on disk.
+_NO_LOCATION_DIRS: frozenset[str] = frozenset()
+
+# Folders where all subfolders collapse to ONE pin (the folder's own geo level).
+# Populated at runtime from unique_pin.txt marker files on disk.
+_UNIQUE_PIN_DIRS: frozenset[str] = frozenset()
+
+
+def _load_marker_files(root: Path) -> None:
+    """Scan disk for unique_pin.txt / no_location.txt and populate the module-level sets."""
+    global _UNIQUE_PIN_DIRS, _NO_LOCATION_DIRS
+    unique_pins: set[str] = set()
+    no_locs: set[str] = set()
+    for marker in root.rglob("unique_pin.txt"):
+        unique_pins.add(str(marker.parent.relative_to(root)))
+    for marker in root.rglob("no_location.txt"):
+        no_locs.add(str(marker.parent.relative_to(root)))
+    _UNIQUE_PIN_DIRS = frozenset(unique_pins)
+    _NO_LOCATION_DIRS = frozenset(no_locs)
+    log.info(f"Marker files: {len(_UNIQUE_PIN_DIRS)} unique_pin, {len(_NO_LOCATION_DIRS)} no_location")
 
 # Folder names at continent/country level-2 that are NOT countries
 _NON_COUNTRY_LEVEL2 = {
@@ -468,36 +505,36 @@ def _system_tag(rel_path: str) -> Optional[str]:
     if not parts:
         return None
 
-    # .Amigos/{Country} - {City}/{Person}/...  → {country_es}/{city} - {person}
-    # .Amigos/{Country}/{City} - {Person}/...  → {country_es}/{city} - {person}
+    # .Amigos — new structure (two formats):
+    #   Country-first:  .Amigos/{Country}/{City}/...           → {Country}/{City}
+    #   Person-first:   .Amigos/{Person}/{Country}/{City}/...  → {Country}/{City} - {Person}
     if parts[0] == ".Amigos":
-        if len(parts) < 4:
+        if len(parts) < 3:
             return None
-        country_city = parts[1]
-        if " - " in country_city:
-            # Old format: country and city joined with " - " in parts[1]
-            country_folder, city = country_city.split(" - ", 1)
-            person = parts[2]
-        elif len(parts) >= 4 and " - " in parts[2]:
-            # New format: country in parts[1], city - person in parts[2]
-            country_folder = parts[1]
-            city, person = parts[2].split(" - ", 1)
+        level1 = parts[1]
+        if COUNTRY_NORMALIZE.get(level1) is not None:
+            # Country-first
+            city = parts[2] if len(parts) > 2 else None
+            if not city:
+                return None
+            return f"{level1}/{city}"
         else:
-            return None
-        mapping = _AMIGOS_COUNTRY_MAP.get(country_folder)
-        if not mapping:
-            return None
-        country_es = mapping[0]
-        # Album subfolder starting with "City - ..." → pin to that trip album (full name)
-        if len(parts) >= 5 and " - " in parts[3]:
-            album_name = parts[3]   # e.g. "Barcelona - Eva - Diciembre 2015"
-            album_city = album_name.split(" - ", 1)[0].strip()
-            if album_city:
-                return f"{country_es}/{album_name}"
-        return f"{country_es}/{city} - {person}"
+            # Person-first
+            if len(parts) < 4:
+                return None
+            person   = level1
+            country_es = parts[2]
+            city     = parts[3] if len(parts) > 3 else None
+            if not city:
+                return f"{country_es}/{person}"
+            return f"{country_es}/{city} - {person}"
 
-    # .Whatsapp/...  → all pinned at Tibás, Costa Rica
+    # .Whatsapp — new geographic hierarchy: .Whatsapp/{Country}/{City}/...
     if parts[0] == ".Whatsapp":
+        if len(parts) >= 3:
+            country_es = parts[1]
+            city       = parts[2]
+            return f"{country_es}/{city} - Whatsapp"
         return "Costa Rica/Tibás - Whatsapp"
 
     if parts[0] != "Camera" or len(parts) < 3:
@@ -596,18 +633,53 @@ def classify_path(rel_path: str) -> dict:
     """
     Classify a relative photo path into geo or general metadata.
 
-    Always sets "folder" key: for Camera/ paths it is the path between Camera/
-    and the filename (no Camera/ prefix, no filename); for general paths it is
-    the full directory path (dot-stripped). This ensures general_folder is
-    populated for all photo types.
+    Pre-checks (in order):
+      1. no_location.txt in any ancestor → return general (no geo)
+      2. unique_pin.txt in any ancestor  → collapse all subfolders to that
+         folder's geographic level (one pin per unique_pin folder)
+      3. Normal classification via _classify_path_raw
+
+    Always sets "folder" key so general_folder is populated for every photo.
     """
+    p_parts = Path(rel_path).parts
+    folder_parts = p_parts[:-1]   # directory components only (no filename)
+
+    # 1. no_location.txt check
+    for i in range(len(folder_parts), 0, -1):
+        ancestor = str(Path(*folder_parts[:i]))
+        if ancestor in _NO_LOCATION_DIRS:
+            return {"type": "general", "folder": str(Path(*folder_parts)) if folder_parts else ""}
+
+    # 2. unique_pin.txt check — find deepest ancestor with unique_pin.txt
+    unique_pin_folder: Optional[str] = None
+    for i in range(len(folder_parts), 0, -1):
+        ancestor = str(Path(*folder_parts[:i]))
+        if ancestor in _UNIQUE_PIN_DIRS:
+            unique_pin_folder = ancestor
+            break
+
+    if unique_pin_folder:
+        # Find geo for the pin folder: try test paths from deepest to shallowest
+        pin_parts = Path(unique_pin_folder).parts
+        for depth in range(len(pin_parts), 0, -1):
+            test = "/".join(pin_parts[:depth]) + "/dummy.jpg"
+            result = _classify_path_raw(test)
+            if result["type"] == "geo":
+                result = dict(result)
+                # Use real folder path for general_folder
+                if rel_path.startswith("Camera/") and len(p_parts) > 2:
+                    result["folder"] = str(Path(*p_parts[1:-1]))
+                elif folder_parts:
+                    result["folder"] = str(Path(*folder_parts))
+                return result
+
+    # 3. Normal classification
     result = _classify_path_raw(rel_path)
     # For Camera/ geo records, derive folder from path so general_folder is set
     if result["type"] == "geo" and rel_path.startswith("Camera/"):
-        p = Path(rel_path).parts  # e.g. ('Camera', 'Europa', 'España', 'Pamplona', 'file.jpg')
-        if len(p) > 2:
+        if len(p_parts) > 2:
             result = dict(result)
-            result.setdefault("folder", str(Path(*p[1:-1])))
+            result.setdefault("folder", str(Path(*p_parts[1:-1])))
     return result
 
 
@@ -631,29 +703,40 @@ def _classify_path_raw(rel_path: str) -> dict:
 
     root = parts[0]
 
-    # ── .Amigos: Country - City/Person/Album  OR  Country/City - Person/Album ──
+    # ── .Amigos — new geographic structure ───────────────────────────────────
+    # Country-first:  .Amigos/{Country}/{City}/...
+    # Person-first:   .Amigos/{Person}/{Country}/{City}/...
     if root == ".Amigos":
-        if len(parts) < 4:
+        if len(parts) < 3:
             return {"type": "general", "folder": str(Path(*parts[:-1])).lstrip(".")}
-        if " - " in parts[1]:
-            # Old format: .Amigos/{Country} - {City}/{Person}/...
-            country_folder, city = parts[1].split(" - ", 1)
-        elif len(parts) >= 4 and " - " in parts[2]:
-            # New format: .Amigos/{Country}/{City} - {Person}/...
-            country_folder = parts[1]
-            city = parts[2].split(" - ", 1)[0]
+        level1 = parts[1]
+        country_en = COUNTRY_NORMALIZE.get(level1)
+        if country_en is not None:
+            # Country-first format
+            city_raw = parts[2] if len(parts) > 2 else None
+            city     = (_extract_city_token(city_raw) or city_raw) if city_raw else None
+            continent = _COUNTRY_CONTINENT.get(country_en)
         else:
-            return {"type": "general", "folder": str(Path(*parts[:-1])).lstrip(".")}
-        mapping = _AMIGOS_COUNTRY_MAP.get(country_folder)
-        if not mapping:
-            return {"type": "general", "folder": str(Path(*parts[:-1])).lstrip(".")}
-        _, country_en, continent = mapping
+            # Person-first format: .Amigos/{Person}/{Country}/{City}/...
+            if len(parts) < 4:
+                return {"type": "general", "folder": str(Path(*parts[:-1])).lstrip(".")}
+            country_en = COUNTRY_NORMALIZE.get(parts[2], parts[2])
+            city_raw   = parts[3] if len(parts) > 3 else None
+            city       = (_extract_city_token(city_raw) or city_raw) if city_raw else None
+            continent  = _COUNTRY_CONTINENT.get(country_en)
         return {"type": "geo", "continent": continent,
                 "country": country_en, "city": city,
                 "folder_hint_year": None, "folder_hint_month": None}
 
-    # ── .Whatsapp: all photos pinned at Tibás, Costa Rica ────────────────────
+    # ── .Whatsapp — geographic hierarchy: .Whatsapp/{Country}/{City}/... ──────
     if root == ".Whatsapp":
+        if len(parts) >= 3:
+            country_en = COUNTRY_NORMALIZE.get(parts[1], parts[1])
+            city       = _extract_city_token(parts[2]) or parts[2]
+            continent  = _COUNTRY_CONTINENT.get(country_en)
+            return {"type": "geo", "continent": continent,
+                    "country": country_en, "city": city,
+                    "folder_hint_year": None, "folder_hint_month": None}
         return {"type": "geo", "continent": "Central America",
                 "country": "Costa Rica", "city": "Tibás",
                 "folder_hint_year": None, "folder_hint_month": None}
@@ -756,27 +839,37 @@ def _classify_path_raw(rel_path: str) -> dict:
         # ── Standard Continent / Country / City structure ────────────────────
         country = COUNTRY_NORMALIZE.get(level2, level2)
 
-        # ── Costa Rica inside Latinoamerica: continent/Costa Rica/{cat}/{city}/ ─
+        # ── Costa Rica inside Latinoamerica ──────────────────────────────────
+        # Geo categories (activity/theme buckets): city is parts[3]
         _CR_GEO_CATS = {"Turismo CR", "Voluntariados",
                         "Paseos en automovil", "Paseos en bicicleta"}
-        if country == "Costa Rica" and len(parts) >= 5 and parts[2] in _CR_GEO_CATS:
-            city = _extract_city_token(parts[3]) or parts[3]
-            hy, hm = _date_from_folder(parts[3])
-            # Promote known sub-cities (city-container / sub-city patterns)
-            _CR_SUBCITY_MAP = {
-                ('Turrialba', 'Juan Viñas'): 'Juan Viñas de Turrialba',
-                ('Turrialba', 'Tuis'):       'Tuis',
-            }
-            if len(parts) >= 6:
-                mapped = _CR_SUBCITY_MAP.get((city, parts[4]))
-                if mapped:
-                    city = mapped
-            return {"type": "geo", "continent": continent,
-                    "country": "Costa Rica", "city": city,
-                    "folder_hint_year": hy, "folder_hint_month": hm}
-        if country == "Costa Rica" and len(parts) >= 4 and parts[2] in {"Familia", "Visitas"}:
-            folder = str(Path(*parts[:-1])).lstrip(".")
-            return {"type": "general", "folder": folder}
+        # Direct city folders (parts[2] IS the city name)
+        _CR_DIRECT_CITIES = {
+            "Cartago", "Colima", "Mastatal", "Moravia",
+            "Universidad de Costa Rica",
+        }
+        if country == "Costa Rica":
+            if len(parts) >= 5 and parts[2] in _CR_GEO_CATS:
+                city = _extract_city_token(parts[3]) or parts[3]
+                hy, hm = _date_from_folder(parts[3])
+                _CR_SUBCITY_MAP = {
+                    ('Turrialba', 'Juan Viñas'): 'Juan Viñas de Turrialba',
+                    ('Turrialba', 'Tuis'):       'Tuis',
+                }
+                if len(parts) >= 6:
+                    mapped = _CR_SUBCITY_MAP.get((city, parts[4]))
+                    if mapped:
+                        city = mapped
+                return {"type": "geo", "continent": continent,
+                        "country": "Costa Rica", "city": city,
+                        "folder_hint_year": hy, "folder_hint_month": hm}
+            # Direct city (Colima, Cartago, Moravia, …): parts[2] is the city
+            if len(parts) >= 4 and parts[2] in _CR_DIRECT_CITIES:
+                city = parts[2]
+                hy, hm = _date_from_folder(parts[2])
+                return {"type": "geo", "continent": continent,
+                        "country": "Costa Rica", "city": city,
+                        "folder_hint_year": hy, "folder_hint_month": hm}
 
         if country is None:
             # Country entry maps to None (e.g. "Paises Balticos" splits into sub-cities)
@@ -1335,13 +1428,15 @@ def _fix_dates(db: sqlite3.Connection, dry_run: bool):
 
 
 def _fix_geo(db: sqlite3.Connection, dry_run: bool):
-    """Re-classify all Camera/ records without a disk scan."""
+    """Re-classify Camera/, .Amigos/, and .Whatsapp/ records without a disk scan."""
     rows = db.execute("""
         SELECT hash, current_path, lat, lng FROM photos
-        WHERE current_path LIKE 'Camera/%'
+        WHERE (current_path LIKE 'Camera/%'
+               OR current_path LIKE '.Amigos/%'
+               OR current_path LIKE '.Whatsapp/%')
           AND status = 'active'
     """).fetchall()
-    log.info(f"Re-classifying {len(rows):,} Camera/ records …")
+    log.info(f"Re-classifying {len(rows):,} Camera/+.Amigos/+.Whatsapp/ records …")
     batch = []
     for row in rows:
         cls = classify_path(row["current_path"])
@@ -1370,6 +1465,9 @@ def _fix_geo(db: sqlite3.Connection, dry_run: bool):
 def run(args):
     db = open_db()
     s3 = boto3.client("s3", region_name=REGION)
+
+    # Load unique_pin.txt / no_location.txt marker files from disk
+    _load_marker_files(args.root)
 
     if args.reindex_only:
         build_and_upload_index(db, s3, args.dry_run)
