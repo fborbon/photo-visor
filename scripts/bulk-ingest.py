@@ -505,6 +505,16 @@ def _system_tag(rel_path: str) -> Optional[str]:
     if not parts:
         return None
 
+    # unique_pin.txt: collapse subfolder path to the pin-folder level so all
+    # subfolders share the same system tag → one S3 index file → one map pin.
+    folder_parts = parts[:-1]
+    for i in range(len(folder_parts), 0, -1):
+        ancestor = str(Path(*folder_parts[:i]))
+        if ancestor in _UNIQUE_PIN_DIRS:
+            # Treat the file as if it lives directly inside the pin folder
+            parts = Path(ancestor).parts + ("dummy.jpg",)
+            break
+
     # .Amigos — new structure (two formats):
     #   Country-first:  .Amigos/{Country}/{City}/...           → {Country}/{City}
     #   Person-first:   .Amigos/{Person}/{Country}/{City}/...  → {Country}/{City} - {Person}
