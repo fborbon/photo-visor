@@ -74,7 +74,7 @@ GEO_CONTINENT_ROOTS = {
 # Top-level folders treated as non-geographic → everything goes to general/
 NON_GEO_ROOTS = {
     "Apuntes", "Atardeceres", "Automoviles", "Comics-Arts",
-    "Comidas y recetas", "Google Earth", "Lecturas", "Memes",
+    "Comidas y recetas", "Google Earth", "Internet", "Lecturas", "Memes",
     "Ordenar", "Otros", "Películas", "Wallpapers",
 }
 
@@ -596,6 +596,24 @@ def classify_path(rel_path: str) -> dict:
     """
     Classify a relative photo path into geo or general metadata.
 
+    Always sets "folder" key: for Camera/ paths it is the path between Camera/
+    and the filename (no Camera/ prefix, no filename); for general paths it is
+    the full directory path (dot-stripped). This ensures general_folder is
+    populated for all photo types.
+    """
+    result = _classify_path_raw(rel_path)
+    # For Camera/ geo records, derive folder from path so general_folder is set
+    if result["type"] == "geo" and rel_path.startswith("Camera/"):
+        p = Path(rel_path).parts  # e.g. ('Camera', 'Europa', 'España', 'Pamplona', 'file.jpg')
+        if len(p) > 2:
+            result = dict(result)
+            result.setdefault("folder", str(Path(*p[1:-1])))
+    return result
+
+
+def _classify_path_raw(rel_path: str) -> dict:
+    """
+    Internal implementation of classify_path (without the Camera/ folder injection).
     Returns one of:
       {'type': 'geo',     'continent': ..., 'country': ..., 'city': ...,
                           'folder_hint_year': ..., 'folder_hint_month': ...}
@@ -776,6 +794,15 @@ def classify_path(rel_path: str) -> dict:
             city = _extract_city_token(level3)
             hy, hm = _date_from_folder(level3)
             if city is None:
+                # USA/Canada: trip-folder (e.g. "Viaje Fernando-julio 2003") wraps
+                # real city names at level-4.  Promote level-4 as city.
+                if country in ("USA", "Canada") and len(parts) >= 5:
+                    sub_city = _extract_city_token(parts[3]) or parts[3]
+                    if sub_city:
+                        hy2, hm2 = _date_from_folder(level3)
+                        return {"type": "geo", "continent": continent,
+                                "country": country, "city": sub_city,
+                                "folder_hint_year": hy2, "folder_hint_month": hm2}
                 # level-3 name looks non-geographic → general, preserve full path
                 folder = str(Path(*parts[:-1])).lstrip(".")
                 return {"type": "general", "folder": folder}
@@ -1194,11 +1221,34 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
 
     _put_index(s3, "index/tags/system.json", sys_tag_index, dry_run)
 
+    # ── index/path_tags.json + index/folder_paths.json ────────────────────────
+    # path_tags: [{display, s3}] for every folder that has indexed photos.
+    # Camera/ photos get "Camera/" prepended to display; s3 key = general_folder sanitized.
+    # Includes all ancestor paths so the tree can be built without intermediate gaps.
+    path_tags_map: dict[str, str] = {}   # display → s3_key
+    for row in active:
+        gf = row["general_folder"]
+        if not gf:
+            continue
+        cp = str(row["current_path"] or "")
+        is_camera = cp.startswith("Camera/")
+        gf_parts = gf.split("/")
+        for depth in range(1, len(gf_parts) + 1):
+            ancestor_gf = "/".join(gf_parts[:depth])
+            display = ("Camera/" + ancestor_gf) if is_camera else ancestor_gf
+            s3_key = re.sub(r"[^\w\-/]", "_", ancestor_gf)
+            path_tags_map.setdefault(display, s3_key)
+    path_tags_list = sorted([{"display": k, "s3": v} for k, v in path_tags_map.items()],
+                            key=lambda x: x["display"])
+    _put_index(s3, "index/path_tags.json", path_tags_list, dry_run)
+    _put_index(s3, "index/folder_paths.json", sorted(path_tags_map.keys()), dry_run)
+
     log.info(f"Index: {len(by_year)} year files, {len(by_location)} location files, "
              f"{len(by_folder)} general files, {len(recent_photos)} recent, "
              f"{len(by_month)} monthly stats, {len(by_sys_tag)} system tags, "
              f"{len(video_rows) if video_rows else 0} videos, "
-             f"{len(private_hashes)} private hashes")
+             f"{len(private_hashes)} private hashes, "
+             f"{len(path_tags_list)} path tags")
 
     if not dry_run:
         try:
@@ -1285,16 +1335,13 @@ def _fix_dates(db: sqlite3.Connection, dry_run: bool):
 
 
 def _fix_geo(db: sqlite3.Connection, dry_run: bool):
-    """Re-classify Latinoamerica, Asia, and Europa records without a disk scan."""
+    """Re-classify all Camera/ records without a disk scan."""
     rows = db.execute("""
         SELECT hash, current_path, lat, lng FROM photos
-        WHERE (current_path LIKE 'Camera/Latinoamerica/%'
-               OR current_path LIKE 'Camera/Asia/%'
-               OR current_path LIKE 'Camera/Europa/%'
-               OR current_path LIKE 'Camera/Norteamerica/%')
+        WHERE current_path LIKE 'Camera/%'
           AND status = 'active'
     """).fetchall()
-    log.info(f"Re-classifying {len(rows):,} Latinoamerica/Asia/Europa records …")
+    log.info(f"Re-classifying {len(rows):,} Camera/ records …")
     batch = []
     for row in rows:
         cls = classify_path(row["current_path"])
@@ -1305,7 +1352,7 @@ def _fix_geo(db: sqlite3.Connection, dry_run: bool):
             cls.get("continent") if cls["type"] == "geo" else None,
             cls.get("country")   if cls["type"] == "geo" else None,
             cls.get("city")      if cls["type"] == "geo" else None,
-            cls.get("folder")    if cls["type"] == "general" else None,
+            cls.get("folder"),
             lat, lng,
             datetime.now().isoformat(),
             row["hash"],
@@ -1371,7 +1418,7 @@ def run(args):
                     cls.get("continent") if cls["type"] == "geo" else None,
                     cls.get("country")   if cls["type"] == "geo" else None,
                     cls.get("city")      if cls["type"] == "geo" else None,
-                    cls.get("folder")    if cls["type"] == "general" else None,
+                    cls.get("folder"),
                     now_iso, h,
                 ))
             db.executemany(
@@ -1404,7 +1451,7 @@ def run(args):
                  cls.get("continent") if cls["type"] == "geo" else None,
                  cls.get("country")   if cls["type"] == "geo" else None,
                  cls.get("city")      if cls["type"] == "geo" else None,
-                 cls.get("folder")    if cls["type"] == "general" else None,
+                 cls.get("folder"),
                  lat, lng,
                  datetime.now().isoformat(), h)
             )
@@ -1429,7 +1476,7 @@ def run(args):
                 cls.get("continent") if cls["type"] == "geo" else None,
                 cls.get("country")   if cls["type"] == "geo" else None,
                 cls.get("city")      if cls["type"] == "geo" else None,
-                cls.get("folder")    if cls["type"] == "general" else None,
+                cls.get("folder"),
                 lat, lng,
                 datetime.now().isoformat(),
                 row["hash"],
@@ -1459,7 +1506,7 @@ def run(args):
                 cls.get("continent") if cls["type"] == "geo" else None,
                 cls.get("country")   if cls["type"] == "geo" else None,
                 cls.get("city")      if cls["type"] == "geo" else None,
-                cls.get("folder")    if cls["type"] == "general" else None,
+                cls.get("folder"),
                 lat, lng,
                 datetime.now().isoformat(),
                 row["hash"],
@@ -1603,7 +1650,7 @@ def run(args):
             cls.get("continent") if cls["type"] == "geo" else None,
             cls.get("country")   if cls["type"] == "geo" else None,
             cls.get("city")      if cls["type"] == "geo" else None,
-            cls.get("folder")    if cls["type"] == "general" else None,
+            cls.get("folder"),
             exif.get("exif_make"),
             exif.get("exif_model"),
             width, height,
