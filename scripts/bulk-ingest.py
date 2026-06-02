@@ -642,12 +642,9 @@ def _system_tag(rel_path: str) -> Optional[str]:
         # Normalize folder-spelling variants to the canonical city name
         _CITY_FOLDER_NORMALIZE = {'Bruges': 'Brugge'}
         normalized = [tag_parts[0]] + [_CITY_FOLDER_NORMALIZE.get(p, p) for p in tag_parts[1:]]
-        tag_str = "/".join(normalized)
-        # When unique_pin.txt is active, truncate Camera/ tags to country/city (2
-        # segments) so sibling pin-folders share one tag → one map pin.
-        if _unique_pin_depth and len(normalized) > 2:
-            tag_str = "/".join(normalized[:2])
-        return tag_str
+        # Always limit to country/city (2 segments) — one pin per city on the map.
+        # Sub-album structure within a city must not create extra pins.
+        return "/".join(normalized[:2])
     return None
 
 
