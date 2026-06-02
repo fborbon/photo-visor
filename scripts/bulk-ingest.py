@@ -507,11 +507,14 @@ def _system_tag(rel_path: str) -> Optional[str]:
 
     # unique_pin.txt: collapse subfolder path to the pin-folder level so all
     # subfolders share the same system tag → one S3 index file → one map pin.
+    # _unique_pin_depth tracks how many levels were in the unique_pin folder so
+    # we can truncate Camera/ tags to country/city (2 segments) at the end.
+    _unique_pin_depth = 0
     folder_parts = parts[:-1]
     for i in range(len(folder_parts), 0, -1):
         ancestor = str(Path(*folder_parts[:i]))
         if ancestor in _UNIQUE_PIN_DIRS:
-            # Treat the file as if it lives directly inside the pin folder
+            _unique_pin_depth = i
             parts = Path(ancestor).parts + ("dummy.jpg",)
             break
 
@@ -576,11 +579,15 @@ def _system_tag(rel_path: str) -> Optional[str]:
             return f"{country_es}/{subfolder}"
 
     # Camera/Latinoamerica/Costa Rica/{geo_cat}/{city}/...  → "Costa Rica/{city}"
+    # When unique_pin is active at sub-city level (e.g. Tuis), use tag_parts[3].
     _CR_GEO_CATS = {"Turismo CR", "Voluntariados",
                     "Paseos en automovil", "Paseos en bicicleta"}
     if (len(tag_parts) >= 3 and tag_parts[0] == "Costa Rica"
             and tag_parts[1] in _CR_GEO_CATS):
-        return f"Costa Rica/{tag_parts[2]}"
+        city = tag_parts[2]
+        if _unique_pin_depth and len(tag_parts) >= 4:
+            city = tag_parts[3]   # sub-city when unique_pin is at e.g. Tuis level
+        return f"Costa Rica/{city}"
     # Costa Rica non-geo categories → no sys tag
     if (len(tag_parts) >= 2 and tag_parts[0] == "Costa Rica"
             and tag_parts[1] in {"Familia", "Visitas"}):
@@ -635,7 +642,12 @@ def _system_tag(rel_path: str) -> Optional[str]:
         # Normalize folder-spelling variants to the canonical city name
         _CITY_FOLDER_NORMALIZE = {'Bruges': 'Brugge'}
         normalized = [tag_parts[0]] + [_CITY_FOLDER_NORMALIZE.get(p, p) for p in tag_parts[1:]]
-        return "/".join(normalized)
+        tag_str = "/".join(normalized)
+        # When unique_pin.txt is active, truncate Camera/ tags to country/city (2
+        # segments) so sibling pin-folders share one tag → one map pin.
+        if _unique_pin_depth and len(normalized) > 2:
+            tag_str = "/".join(normalized[:2])
+        return tag_str
     return None
 
 
