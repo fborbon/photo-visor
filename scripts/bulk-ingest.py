@@ -579,14 +579,14 @@ def _system_tag(rel_path: str) -> Optional[str]:
             return f"{country_es}/{subfolder}"
 
     # Camera/Latinoamerica/Costa Rica/{geo_cat}/{city}/...  → "Costa Rica/{city}"
-    # When unique_pin is active at sub-city level (e.g. Tuis), use tag_parts[3].
+    # Always use the deepest available sub-city (tag_parts[3] if present).
+    # unique_pin.txt at city level (e.g. Turrialba) caps before reaching tag_parts[3],
+    # so capping happens naturally without a separate flag check.
     _CR_GEO_CATS = {"Turismo CR", "Voluntariados",
                     "Paseos en automovil", "Paseos en bicicleta"}
     if (len(tag_parts) >= 3 and tag_parts[0] == "Costa Rica"
             and tag_parts[1] in _CR_GEO_CATS):
-        city = tag_parts[2]
-        if _unique_pin_depth and len(tag_parts) >= 4:
-            city = tag_parts[3]   # sub-city when unique_pin is at e.g. Tuis level
+        city = tag_parts[3] if len(tag_parts) >= 4 else tag_parts[2]
         return f"Costa Rica/{city}"
     # Costa Rica non-geo categories → no sys tag
     if (len(tag_parts) >= 2 and tag_parts[0] == "Costa Rica"
