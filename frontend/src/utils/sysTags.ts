@@ -208,7 +208,8 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Costa Rica:Rosas de Llano Grande': [ 9.8770, -83.9380],  // Rosas, Llano Grande, Cartago
   'Costa Rica:Sarapiquí':           [ 10.4338,  -84.0000],  // Puerto Viejo de Sarapiquí, Heredia
   'Costa Rica:Sarchí':              [ 10.1006,  -84.3786],  // Sarchí, Alajuela (artisan crafts town)
-  'Costa Rica:Turrialba':           [  9.9007,  -83.6816],  // Turrialba city, Cartago (covers Tuis albums)
+  'Costa Rica:Turrialba':           [  9.9007,  -83.6816],  // Turrialba city, Cartago
+  'Costa Rica:Tuis':                [  9.8803,  -83.7303],  // Tuis community, Jiménez canton, Cartago
   'Costa Rica:Volcán Barva':        [ 10.1344,  -84.0992],  // Barva Volcano, Braulio Carrillo NP
   'Costa Rica:Zarcero':             [ 10.1784,  -84.3983],  // Zarcero, Alajuela (topiary park)
   // Paseos en bicicleta

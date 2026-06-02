@@ -744,6 +744,15 @@ def classify_path(rel_path: str) -> dict:
         if country == "Costa Rica" and len(parts) >= 5 and parts[2] in _CR_GEO_CATS:
             city = _extract_city_token(parts[3]) or parts[3]
             hy, hm = _date_from_folder(parts[3])
+            # Promote known sub-cities (city-container / sub-city patterns)
+            _CR_SUBCITY_MAP = {
+                ('Turrialba', 'Juan Viñas'): 'Juan Viñas de Turrialba',
+                ('Turrialba', 'Tuis'):       'Tuis',
+            }
+            if len(parts) >= 6:
+                mapped = _CR_SUBCITY_MAP.get((city, parts[4]))
+                if mapped:
+                    city = mapped
             return {"type": "geo", "continent": continent,
                     "country": "Costa Rica", "city": city,
                     "folder_hint_year": hy, "folder_hint_month": hm}
@@ -774,14 +783,23 @@ def classify_path(rel_path: str) -> dict:
             # File is directly inside the country folder – no city sub-folder
             city = hy = hm = None
 
-        # España/Navarra: region folder → subfolder is the actual city
-        if country == "Spain" and city == "Navarra" and len(parts) >= 5:
+        # España region containers: Navarra, Cataluña, Asturias, Andalucia, etc.
+        # → level-4 is the actual city/place, not the region
+        _ESPAÑA_REGION_CONTAINERS = {"Navarra", "Cataluña", "Asturias", "Andalucia"}
+        if country == "Spain" and city in _ESPAÑA_REGION_CONTAINERS and len(parts) >= 5:
             sub_city = _extract_city_token(parts[3])
-            if sub_city and sub_city != "Navarra":
+            if sub_city and sub_city != city:
                 hy2, hm2 = _date_from_folder(parts[3])
                 city = sub_city
                 hy = hy2 or hy
                 hm = hm2 or hm
+
+        # Trip/visit-style level-3 folder (e.g. "Visita agosto 2008") → real city is level-4
+        if (city and city.lower().startswith(('visita', 'viaje', 'viagem'))
+                and len(parts) >= 5):
+            sub_city = _extract_city_token(parts[3])
+            if sub_city:
+                city = sub_city
 
         return {"type": "geo", "continent": continent,
                 "country": country, "city": city,
