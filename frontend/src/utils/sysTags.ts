@@ -327,6 +327,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Formigal':     [ 42.7722,   -0.3803],  // ski resort, Huesca Pyrenees
   'España:Gastelugatxe': [ 43.4393,   -2.7739],  // iconic islet near Bermeo
   'España:Gran Canaria': [ 27.9202,  -15.5474],  // Las Palmas
+  'España:Timbachata Gran Canaria': [ 28.2940, -16.6210],  // Timbachata, Tenerife/Canarias area
   'España:Granada':      [ 37.1773,   -3.5986],
   'España:Guernica':     [ 43.3163,   -2.6787],  // Gernika-Lumo, Basque Country
   'España:Guillen':      [ 43.2627,   -2.9253],  // Bilbao area
@@ -488,6 +489,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Holanda:Eindhoven':   [ 51.4416,    5.4697],
   'Holanda:La Haya':     [ 52.0705,    4.3007],  // The Hague
   'Holanda:Rotterdam':   [ 51.9244,    4.4777],
+  'Holanda:Maastricht':  [ 50.8513,    5.6909],  // Maastricht, Limburg
   'Holanda:Utrecht':     [ 52.0907,    5.1214],
   'Países Bajos:Amsterdam': [52.3676,  4.9041],
 
@@ -598,24 +600,29 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   // ── USA ───────────────────────────────────────────────────────────────
   'USA:':                [ 38.9072,  -77.0369],  // Washington DC (capital fallback)
   'USA:Boston':          [ 42.3601,  -71.0589],  // Boston, Massachusetts
-  'USA:Boulder':         [ 40.0150, -105.2705],  // Boulder, CO
+  'USA:Boulder':         [ 40.0150, -105.2705],  // Boulder, Colorado
   'USA:Cambria':         [ 35.5588, -121.0796],  // Cambria, California coast
-  'USA:Chicago':         [ 41.8781,  -87.6298],
+  'USA:Chicago':         [ 41.8781,  -87.6298],  // Chicago, Illinois
   'USA:Foxboro':         [ 42.0651,  -71.2454],  // Foxborough, Massachusetts
   'USA:Greenville':      [ 34.8526,  -82.3940],  // Greenville, South Carolina
-  'USA:Los Angeles':     [ 34.0522, -118.2437],
+  'USA:Las Vegas':       [ 36.1699, -115.1398],  // Las Vegas, Nevada
+  'USA:Los Angeles':     [ 34.0522, -118.2437],  // Los Angeles, California
   'USA:Miami':           [ 25.7617,  -80.1918],  // Miami, Florida
   'USA:New Bedford':     [ 41.6362,  -70.9342],  // New Bedford, Massachusetts
   'USA:New Port':        [ 41.4901,  -71.3128],  // Newport, Rhode Island
+  'USA:New Port Massachusetts': [ 41.4901, -71.3128], // same, folder-name variant
   'USA:New York':        [ 40.7128,  -74.0060],  // New York City
-  'USA:Povidence':                  [ 41.8240,  -71.4128],  // Providence, RI (folder typo)
+  'USA:NREL':            [ 39.7406, -105.1686],  // NREL, Golden, Colorado (legacy tag name)
   'USA:Providence':                 [ 41.8240,  -71.4128],  // Providence, Rhode Island
   'USA:Providence Rhode Island':    [ 41.8240,  -71.4128],  // Providence, RI (folder name variant)
-  'USA:San Diego':       [ 32.7157, -117.1611],
-  'USA:San Francisco':   [ 37.7749, -122.4194],
-  'USA:Silicon Valley':  [ 37.3875, -122.0575],  // Santa Clara County tech hub
+  'USA:Povidence':                  [ 41.8240,  -71.4128],  // Providence, RI (folder typo)
+  'USA:San Diego':       [ 32.7157, -117.1611],  // San Diego, California
+  'USA:San Francisco':   [ 37.7749, -122.4194],  // San Francisco, California
+  'USA:Silicon Valley':  [ 37.3875, -122.0575],  // Santa Clara County
   'USA:Six Flags New England': [42.0681, -72.5757], // Agawam, Massachusetts
-  'USA:Washington CD':   [ 38.9072,  -77.0369],  // Washington DC (folder typo kept for backward compat)
+  'USA:South Carolina':  [ 34.0007,  -81.0348],  // Columbia, SC (state capital fallback)
+  'USA:Washington':      [ 38.9072,  -77.0369],  // Washington DC
+  'USA:Washington CD':   [ 38.9072,  -77.0369],  // Washington DC (folder typo)
   'USA:Washington DC':   [ 38.9072,  -77.0369],  // Washington DC
 
   // ── Uruguay ───────────────────────────────────────────────────────────

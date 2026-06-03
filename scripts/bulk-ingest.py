@@ -505,6 +505,12 @@ def _system_tag(rel_path: str) -> Optional[str]:
     if not parts:
         return None
 
+    # no_location.txt: any ancestor marked → no system tag (no map pin)
+    _fp = parts[:-1]
+    for _i in range(len(_fp), 0, -1):
+        if str(Path(*_fp[:_i])) in _NO_LOCATION_DIRS:
+            return None
+
     # unique_pin.txt: collapse subfolder path to the pin-folder level so all
     # subfolders share the same system tag → one S3 index file → one map pin.
     # _unique_pin_depth tracks how many levels were in the unique_pin folder so
@@ -561,19 +567,24 @@ def _system_tag(rel_path: str) -> Optional[str]:
     else:
         tag_parts = dir_parts
 
-    # Camera/Europa/Visitas/{Trip}/{Country} - {City}/...  → {country_es}/{city} - {trip}
+    # Camera/Europa/Visitas/{Trip}/{Country}/{City}/...    → {country_es}/{city}
+    # Camera/Europa/Visitas/{Trip}/{Country} - {City}/... → {country_es}/{city} - {trip}
     # Camera/Europa/Visitas/{Trip}/{PlainCity}/...         → {country_es}/{city}
-    # City-to-country override for non-Spain plain city names:
     _VISITAS_CITY_COUNTRY = {"Lourdes": "Francia", "Biarritz": "Francia",
                              "Paris": "Francia", "Lyon": "Francia",
                              "Lisboa": "Portugal", "Porto": "Portugal"}
     if len(tag_parts) >= 3 and tag_parts[0] == "Visitas":
-        trip = tag_parts[1]
+        trip     = tag_parts[1]
         subfolder = tag_parts[2]
         if " - " in subfolder:
             country_es, city = subfolder.split(" - ", 1)
             if country_es in COUNTRY_NORMALIZE:
                 return f"{country_es}/{city} - {trip}"
+        elif subfolder in COUNTRY_NORMALIZE:
+            # subfolder is a country name → next level is the city
+            country_es = subfolder
+            city = tag_parts[3] if len(tag_parts) >= 4 else subfolder
+            return f"{country_es}/{city}"
         else:
             country_es = _VISITAS_CITY_COUNTRY.get(subfolder, "España")
             return f"{country_es}/{subfolder}"
@@ -611,11 +622,20 @@ def _system_tag(rel_path: str) -> Optional[str]:
     if len(tag_parts) >= 3 and tag_parts[0] == "España":
         return f"España/{tag_parts[2]}"
 
-    # USA/Canada: collapse trip-folder level so each city gets its own pin.
-    # Camera/Norteamerica/USA/{trip}/{city}/ → "USA/{city}"
-    # Camera/Norteamerica/USA/California - Viaje Monica/Los Angeles/ → "USA/Los Angeles"
+    # USA: depth-1 is either the city (Boulder, Boston…) or a trip/state
+    # folder.  Use depth-1 when it is a real city name; only fall through to
+    # depth-2 when depth-1 is a trip descriptor (starts with "Viaje"/"Rosibel"…)
+    # or a US state name (South Carolina → Greenville at depth-2).
+    _US_STATE_FOLDERS = {"South Carolina", "North Carolina", "Rhode Island",
+                         "New Mexico", "New York State", "West Virginia"}
     if len(tag_parts) >= 3 and tag_parts[0] == "USA":
-        city = _extract_city_token(tag_parts[2]) or tag_parts[2]
+        city1 = _extract_city_token(tag_parts[1])
+        if city1 is None or city1 in _US_STATE_FOLDERS:
+            # Depth-1 is a trip folder or US state → city lives at depth-2
+            city = _extract_city_token(tag_parts[2]) or tag_parts[2]
+        else:
+            # Depth-1 is the actual city (Boulder, Boston, Chicago…)
+            city = city1
         return f"USA/{city}"
 
     # Strip person-subfolder level (e.g. "Aryan's pictures") so city pin is correct.
