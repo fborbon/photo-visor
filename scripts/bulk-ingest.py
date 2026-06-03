@@ -614,13 +614,16 @@ def _system_tag(rel_path: str) -> Optional[str]:
                 return f"{country_cand} - {tag_parts[1]}"
             return tag_parts[0]
 
-    # España: skip region level (Navarra, Asturias, Cataluña, etc.) so each album
-    # gets its own pin using the full subfolder name.
-    # Camera/Europa/España/{Region}/{Subfolder}/ → "España/{Subfolder}"
-    # e.g. España/Cataluña/Barcelona - Agosto 2011 - Vacaciones → "España/Barcelona - Agosto 2011 - Vacaciones"
-    # sysTagCoords then splits by ' - ' to resolve coords when needed.
+    # España: when tag_parts[1] is a region container (Navarra, Cataluña, …)
+    # skip it and use tag_parts[2] as the city.
+    # When tag_parts[1] is already the city (Guernika, Bilbao, Sevilla, …)
+    # use it directly so "España/Guernika/Diciembre 2013" → "España/Guernika".
+    _ESPAÑA_REGION_CONTAINERS_TAG = {"Navarra", "Cataluña", "Asturias", "Andalucia"}
     if len(tag_parts) >= 3 and tag_parts[0] == "España":
-        return f"España/{tag_parts[2]}"
+        if tag_parts[1] in _ESPAÑA_REGION_CONTAINERS_TAG:
+            return f"España/{tag_parts[2]}"   # skip region, promote city
+        else:
+            return f"España/{tag_parts[1]}"   # tag_parts[1] is already the city
 
     # USA: depth-1 is either the city (Boulder, Boston…) or a trip/state
     # folder.  Use depth-1 when it is a real city name; only fall through to
@@ -669,9 +672,12 @@ def _system_tag(rel_path: str) -> Optional[str]:
         # Normalize folder-spelling variants to the canonical city name
         _CITY_FOLDER_NORMALIZE = {'Bruges': 'Brugge'}
         normalized = [tag_parts[0]] + [_CITY_FOLDER_NORMALIZE.get(p, p) for p in tag_parts[1:]]
-        # Always limit to country/city (2 segments) — one pin per city on the map.
-        # Sub-album structure within a city must not create extra pins.
-        return "/".join(normalized[:2])
+        tag_str = "/".join(normalized)
+        # unique_pin.txt: all sibling subfolders share one tag → one pin.
+        # Without it, each album/subfolder keeps its own tag (and own pin).
+        if _unique_pin_depth and len(normalized) > 2:
+            tag_str = "/".join(normalized[:2])
+        return tag_str
     return None
 
 
@@ -891,7 +897,7 @@ def _classify_path_raw(rel_path: str) -> dict:
                         "Paseos en automovil", "Paseos en bicicleta"}
         # Direct city folders (parts[2] IS the city name)
         _CR_DIRECT_CITIES = {
-            "Cartago", "Colima", "Mastatal", "Moravia",
+            "Cartago", "Colima", "Colima de Tibás", "Mastatal", "Moravia",
             "Universidad de Costa Rica",
         }
         if country == "Costa Rica":
