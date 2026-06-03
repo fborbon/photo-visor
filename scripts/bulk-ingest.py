@@ -643,12 +643,19 @@ def _system_tag(rel_path: str) -> Optional[str]:
     if len(tag_parts) >= 3 and tag_parts[2].lower().endswith(" pictures"):
         return "/".join(tag_parts[:2])
 
-    # Collapse trip-folder level when tag_parts[1] is a "Visit - Description" folder.
+    # Collapse trip-folder level when tag_parts[1] is a trip/visit descriptor.
+    # Two forms are recognised:
+    #   "{City} - {Visit description}" (e.g. "Cascais - Visita agosto 2008")
+    #   "{Visit word} {date/desc}"     (e.g. "Visita agosto 2008", "Viaje Europa 2008")
     # Real place sub-folders (Tavira, Lisboa, Belem…) get promoted to city-level tags.
-    # Organisational sub-folders (Calibration, Nokia camera, Site_1…) collapse to parent.
-    # Camera/Europa/Portugal/Cascais - Visita agosto 2008/Tavira/ → "Portugal/Tavira"
-    # Camera/Europa/Alemania/Kassel - Windscanner 1/Site_1/       → "Alemania/Kassel - Windscanner 1"
-    if len(tag_parts) >= 3 and " - " in tag_parts[1]:
+    # Organisational sub-folders (Calibration, Nokia camera, Parte N…) collapse to parent.
+    _TRIP_FIRST_WORDS = {"visita", "viaje", "viagem", "tour", "semana"}
+    _is_trip_folder = (
+        " - " in tag_parts[1] or
+        (len(tag_parts) >= 3 and tag_parts[1].split()[0].lower() in _TRIP_FIRST_WORDS)
+    ) if len(tag_parts) >= 3 else False
+
+    if _is_trip_folder:
         sub = tag_parts[2]
         sub_lower = sub.lower()
         if (re.match(r'^(Parte\s*\d+|\d+)$', sub, re.IGNORECASE)

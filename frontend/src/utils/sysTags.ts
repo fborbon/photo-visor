@@ -23,6 +23,8 @@ export const CITY_ALIASES: Record<string, string> = {
   'vitoria-gasteiz':      'Vitoria',             // same city, alternate name
   'milan':                'Milano',              // same city, alternate spelling
   'universidad de costa rica':  'Universidad de Costa Rica',  // normalises the "RIca" typo variant
+  'retorno de eva':             'Sevilla',   // Retorno de Eva album is in Sevilla → circle-spread
+  'semana santa abril 2013':    'Sevilla',   // Semana Santa album is in Sevilla → circle-spread
 };
 
 export function normalizeCountry(raw: string): string {
