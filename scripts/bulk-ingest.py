@@ -99,7 +99,7 @@ COUNTRY_NORMALIZE = {
     "Japón": "Japan", "Tailandia": "Thailand",
     "Australia": "Australia", "UAE": "UAE",
     # Added for .Amigos / .Whatsapp new country-first structure
-    "Panamá": "Panama", "Salvador": "El Salvador", "Indonesia": "Indonesia",
+    "Panamá": "Panama", "Salvador": "El Salvador", "El Salvador": "El Salvador", "Indonesia": "Indonesia",
     "Brasil": "Brazil", "México": "Mexico",
 }
 

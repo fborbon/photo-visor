@@ -202,7 +202,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Costa Rica:Jardin Lankester':    [  9.8393,  -83.8901],  // Jardín Botánico Lankester, Paraíso, Cartago
   'Costa Rica:Juan Viñas':          [  9.8946,  -83.7457],  // Juan Viñas, Jiménez canton, Cartago
   'Costa Rica:Juan Viñas de Turrialba': [ 9.8946, -83.7457], // same, alternate label
-  'Costa Rica:Los Chiles':          [ 10.8570,  -84.7150],  // Los Chiles, Alajuela (near Nicaragua border)
+  'Costa Rica:Los Chiles':          [ 10.9641,  -84.5992],  // Los Chiles town, Alajuela (OSM rel 6336274)
   'Costa Rica:Perez Zeledon':       [  9.3365,  -83.6484],  // San Isidro del General, Pérez Zeledón
   'Costa Rica:Rio Celeste':         [ 10.7168,  -84.9440],  // Río Celeste, Tenorio Volcano NP
   'Costa Rica:Rosas de Llano Grande': [ 9.8770, -83.9380],  // Rosas, Llano Grande, Cartago
@@ -283,6 +283,10 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Egipto:Luxor':        [ 25.6872,   32.6396],
   'Egipto:Sharm El Sheikh': [27.9158, 34.3300],
   'Egipto:Sharm el Sheikh': [27.9158, 34.3300],
+
+  // ── El Salvador ───────────────────────────────────────────────────────
+  'El Salvador:':            [ 13.6929,  -89.2182],  // San Salvador (capital fallback)
+  'El Salvador:San Salvador': [ 13.6929,  -89.2182],  // San Salvador city
 
   // ── Eslovaquia (Slovakia) ─────────────────────────────────────────────
   'Eslovaquia:':         [ 48.1485,   17.1077],  // Bratislava (capital fallback)
