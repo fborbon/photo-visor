@@ -127,7 +127,12 @@ export default function MapView({ displayName }: { displayName?: string }) {
       if (!isOwner && !meta.public) continue;
       const country = sysTagCountryKey(name);
       const city    = sysTagCityKey(name);
-      const coords  = sysTagCoords(country, city);
+      // Prefer precomputed avg GPS coordinates (from actual photo data);
+      // fall back to hardcoded table only when no GPS data is available.
+      const coords: [number, number] | null =
+        meta.lat != null && meta.lng != null
+          ? [meta.lat, meta.lng]
+          : sysTagCoords(country, city);
       if (!coords) continue;
       const key = country + ':' + city;
       if (!byLocation.has(key)) byLocation.set(key, []);

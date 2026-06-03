@@ -95,6 +95,8 @@ export interface SystemTagMeta {
   count:  number;
   slug:   string;
   public?: boolean;  // true = Camera/ origin (visible to all); false/absent = .Amigos/.Whatsapp (owner only)
+  lat?:   number | null;   // avg latitude  from photos with GPS — more accurate than hardcoded table
+  lng?:   number | null;   // avg longitude from photos with GPS
 }
 
 export interface SystemTagIndex {

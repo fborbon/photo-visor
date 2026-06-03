@@ -1307,7 +1307,17 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
         slug = re.sub(r"[^\w\-]", "_", tag_name)
         _put_index(s3, f"index/sys/{slug}.json", photos, dry_run)
         is_public = any(str(p.get("path") or "").startswith("Camera/") for p in photos)
-        sys_tag_index["tags"][tag_name] = {"count": len(photos), "slug": slug, "public": is_public}
+        # Compute average lat/lng from photos that have GPS coordinates.
+        # These come from actual EXIF GPS or Nominatim geocoding and are far
+        # more accurate than the hardcoded fallback table in sysTags.ts.
+        coords = [(p["lat"], p["lng"]) for p in photos
+                  if p.get("lat") is not None and p.get("lng") is not None]
+        avg_lat = round(sum(c[0] for c in coords) / len(coords), 5) if coords else None
+        avg_lng = round(sum(c[1] for c in coords) / len(coords), 5) if coords else None
+        sys_tag_index["tags"][tag_name] = {
+            "count": len(photos), "slug": slug, "public": is_public,
+            "lat": avg_lat, "lng": avg_lng,
+        }
 
     # Special "Videos" system tag — all video files across all folders
     video_rows = [r for r in active if r["media_type"] == "video"]
