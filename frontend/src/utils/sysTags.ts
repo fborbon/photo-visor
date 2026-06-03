@@ -477,6 +477,10 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   // ── Guatemala ─────────────────────────────────────────────────────────
   'Guatemala:':          [ 14.6349,  -90.5069],  // Guatemala City (capital fallback)
 
+  // ── Panamá ────────────────────────────────────────────────────────────
+  'Panamá:':                  [  8.9936,  -79.5197],  // Panama City (capital fallback)
+  'Panamá:Ciudad de Panamá':  [  8.9936,  -79.5197],  // Panama City
+
   // ── Holanda (Netherlands) ─────────────────────────────────────────────
   'Holanda:':            [ 52.3676,    4.9041],  // Amsterdam (capital fallback)
   'Holanda:Amsterdam':   [ 52.3676,    4.9041],
