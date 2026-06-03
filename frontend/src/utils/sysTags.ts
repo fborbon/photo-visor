@@ -192,44 +192,44 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Costa Rica:':                    [  9.9281,  -84.0907],  // San José (capital fallback)
   // Voluntariados
   'Costa Rica:Cabo Blanco':         [  9.5875,  -85.0929],  // Reserva Natural Cabo Blanco, SW Nicoya
-  'Costa Rica:Cerro Chirripó':      [  9.5236,  -83.4755],  // Chirripó NP (OSM ref provided by user)
-  'Costa Rica:Playa Grande':        [ 10.3197,  -85.8518],  // Playa Grande, Guanacaste
-  'Costa Rica:Playa Manuel Antonio': [ 9.3882,  -84.1627],  // Manuel Antonio NP, Quepos
+  'Costa Rica:Cerro Chirripó':      [  9.4843,  -83.4886],  // peak, OSM node 5923178557 (ele 3820m)
+  'Costa Rica:Playa Grande':        [ 10.3346,  -85.8470],  // Playa Grande, Guanacaste (Nominatim node)
+  'Costa Rica:Playa Manuel Antonio': [ 9.3809,  -84.1456],  // Playa Manuel Antonio beach (OSM way)
   'Costa Rica:Tortuguero':          [ 10.5369,  -83.5007],  // Tortuguero village, Caribbean coast
   // Paseos en automovil
-  'Costa Rica:Atirro':              [  9.8410,  -83.6499],  // Atirro, Turrialba canton
-  'Costa Rica:Cahuita':             [  9.7414,  -82.8399],  // Cahuita National Park, Caribbean coast
-  'Costa Rica:Jardin Lankester':    [  9.8393,  -83.8901],  // Jardín Botánico Lankester, Paraíso, Cartago
-  'Costa Rica:Juan Viñas':          [  9.8946,  -83.7457],  // Juan Viñas, Jiménez canton, Cartago
+  'Costa Rica:Atirro':              [  9.8410,  -83.6499],  // Atirro hamlet, Turrialba canton (Nominatim)
+  'Costa Rica:Cahuita':             [  9.7385,  -82.8408],  // Cahuita area (Nominatim)
+  'Costa Rica:Jardin Lankester':    [  9.8393,  -83.8901],  // Jardín Botánico Lankester (OSM way)
+  'Costa Rica:Juan Viñas':          [  9.8946,  -83.7457],  // Juan Viñas, Jiménez canton
   'Costa Rica:Juan Viñas de Turrialba': [ 9.8946, -83.7457], // same, alternate label
-  'Costa Rica:Los Chiles':          [ 10.9641,  -84.5992],  // Los Chiles town, Alajuela (OSM rel 6336274)
-  'Costa Rica:Perez Zeledon':       [  9.3365,  -83.6484],  // San Isidro del General, Pérez Zeledón
-  'Costa Rica:Rio Celeste':         [ 10.7168,  -84.9440],  // Río Celeste, Tenorio Volcano NP
+  'Costa Rica:Los Chiles':          [ 10.9641,  -84.5992],  // Los Chiles town (OSM rel 6336274, user confirmed)
+  'Costa Rica:Perez Zeledon':       [  9.3706,  -83.7046],  // San Isidro del General (Nominatim)
+  'Costa Rica:Rio Celeste':         [ 10.7168,  -84.9440],  // Río Celeste, Tenorio NP
   'Costa Rica:Rosas de Llano Grande': [ 9.8770, -83.9380],  // Rosas, Llano Grande, Cartago
-  'Costa Rica:Sarapiquí':           [ 10.4872,  -83.9957],  // Puerto Viejo de Sarapiquí, Heredia
-  'Costa Rica:Sarchí':              [ 10.1626,  -84.3152],  // Sarchí, Alajuela (artisan crafts town)
-  'Costa Rica:Turrialba':           [  9.8897,  -83.6809],  // Turrialba city, Cartago (OSM rel 6278852)
-  'Costa Rica:Tuis':                [  9.8396,  -83.5807],  // Tuis, Jiménez canton, Cartago
-  'Costa Rica:Volcán Barva':        [ 10.1344,  -84.0992],  // Barva Volcano, Braulio Carrillo NP
-  'Costa Rica:Zarcero':             [ 10.1784,  -84.3983],  // Zarcero, Alajuela (topiary park)
+  'Costa Rica:Sarapiquí':           [ 10.4541,  -84.0083],  // Puerto Viejo de Sarapiquí (Nominatim)
+  'Costa Rica:Sarchí':              [ 10.0908,  -84.3469],  // Sarchí Norte town (Nominatim)
+  'Costa Rica:Turrialba':           [  9.8897,  -83.6809],  // Turrialba city (OSM rel 6278852)
+  'Costa Rica:Tuis':                [  9.8396,  -83.5807],  // Tuis, Jiménez canton
+  'Costa Rica:Volcán Barva':        [ 10.1340,  -84.0955],  // Barva Volcano node (Nominatim)
+  'Costa Rica:Zarcero':             [ 10.1784,  -84.3983],  // Zarcero town with topiary park
   // Paseos en bicicleta
-  'Costa Rica:Cinco pinos de Cartago': [ 9.8246, -83.9334],  // Cinco Pinos, Cartago (Google Maps confirmed)
-  'Costa Rica:Copalchí':            [  9.8199,  -84.0344],  // Copalchí, Oreamuno canton, Cartago
-  'Costa Rica:Escazú':              [  9.9154,  -84.1402],  // Escazú canton, San José metro
+  'Costa Rica:Cinco pinos de Cartago': [ 9.8246, -83.9334],  // Cinco Pinos (Google Maps confirmed)
+  'Costa Rica:Copalchí':            [  9.8199,  -84.0344],  // Copalchí hamlet (Nominatim node)
+  'Costa Rica:Escazú':              [  9.9160,  -84.1410],  // Escazú city
   'Costa Rica:Llano Grande':        [  9.9389,  -83.9086],  // Llano Grande, Cartago
-  'Costa Rica:Parque de la paz':    [  9.9137,  -84.0719],  // Parque de la Paz, San José (OSM confirmed)
+  'Costa Rica:Parque de la paz':    [  9.9137,  -84.0719],  // Parque de la Paz (OSM way, confirmed)
   'Costa Rica:Polideportivo Cartago': [ 9.8570, -83.9261],  // Polideportivo de Cartago
   'Costa Rica:Juegos Nacionales 2006': [ 9.8570, -83.9261], // same venue
-  'Costa Rica:Sanatorio Durán':     [  9.9330,  -83.8834],  // Sanatorio Durán, Irazú volcano slope
-  'Costa Rica:San Lorenzo de Flores': [ 10.0141, -84.1479],  // San Lorenzo, Flores canton, Heredia
-  'Costa Rica:San Luis de Heredia': [ 10.0069,  -84.0294],  // San Luis, Heredia canton
-  'Costa Rica:San Rafael de Heredia': [10.0133, -84.1005],  // San Rafael canton, Heredia
-  'Costa Rica:Santa Clara de Cartago': [ 9.8035, -83.9945], // Santa Clara, La Unión, Cartago
-  'Costa Rica:Tucurrique':          [  9.8541,  -83.7229],  // Tucurrique, Jiménez canton, Cartago
+  'Costa Rica:Sanatorio Durán':     [  9.9330,  -83.8834],  // Sanatorio Durán (OSM way)
+  'Costa Rica:San Lorenzo de Flores': [ 10.0141, -84.1479], // San Lorenzo, Flores canton (Nominatim node)
+  'Costa Rica:San Luis de Heredia': [ 10.0069,  -84.0294],  // San Luis (Nominatim node)
+  'Costa Rica:San Rafael de Heredia': [10.0133, -84.1005],  // San Rafael canton
+  'Costa Rica:Santa Clara de Cartago': [ 9.8035, -83.9945], // Santa Clara, La Unión
+  'Costa Rica:Tucurrique':          [  9.8541,  -83.7229],  // Tucurrique, Jiménez canton
   'Costa Rica:Turrialba-Lago Piri-5 Pinos': [ 9.8897, -83.6809], // Lago Piri, Turrialba area
   // Cartago city (Whatsapp + Camera)
-  'Costa Rica:Cartago':             [  9.8607,  -83.9190],  // Cartago city
-  'Costa Rica:Cartago - Whatsapp':  [  9.8607,  -83.9190],  // same city
+  'Costa Rica:Cartago':             [  9.8645,  -83.9207],  // Cartago city node (Nominatim node/city)
+  'Costa Rica:Cartago - Whatsapp':  [  9.8645,  -83.9207],  // same city
   // Moravia (Camera + Whatsapp)
   'Costa Rica:Moravia':             [  9.9595,  -84.0464],  // Moravia canton, San José
   'Costa Rica:Moravia - Whatsapp':  [  9.9595,  -84.0464],  // same canton
