@@ -127,12 +127,12 @@ export default function MapView({ displayName }: { displayName?: string }) {
       if (!isOwner && !meta.public) continue;
       const country = sysTagCountryKey(name);
       const city    = sysTagCityKey(name);
-      // Prefer precomputed avg GPS coordinates (from actual photo data);
-      // fall back to hardcoded table only when no GPS data is available.
+      // Prefer the manually-curated coordinate table (keyed by folder-path place
+      // names — reliable and verified).  Fall back to the avg GPS computed from
+      // photo EXIF data only for places not yet in the table.
       const coords: [number, number] | null =
-        meta.lat != null && meta.lng != null
-          ? [meta.lat, meta.lng]
-          : sysTagCoords(country, city);
+        sysTagCoords(country, city) ??
+        (meta.lat != null && meta.lng != null ? [meta.lat, meta.lng] : null);
       if (!coords) continue;
       const key = country + ':' + city;
       if (!byLocation.has(key)) byLocation.set(key, []);

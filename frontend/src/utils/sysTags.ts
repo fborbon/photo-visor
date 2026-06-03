@@ -189,48 +189,71 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Colombia:Medellín':   [  6.2442,  -75.5812],
 
   // ── Costa Rica ───────────────────────────────────────────────────────
-  // Many tags are family/personal albums without city info → fallback San José
   'Costa Rica:':                    [  9.9281,  -84.0907],  // San José (capital fallback)
   // Voluntariados
   'Costa Rica:Cabo Blanco':         [  9.5875,  -85.0929],  // Reserva Natural Cabo Blanco, SW Nicoya
-  'Costa Rica:Cerro Chirripó':      [  9.4844,  -83.4904],  // highest peak in CR, Chirripó NP
-  'Costa Rica:Playa Grande':        [ 10.3197,  -85.8518],  // Playa Grande, Guanacaste (leatherback nesting)
+  'Costa Rica:Cerro Chirripó':      [  9.5236,  -83.4755],  // Chirripó NP (OSM ref provided by user)
+  'Costa Rica:Playa Grande':        [ 10.3197,  -85.8518],  // Playa Grande, Guanacaste
   'Costa Rica:Playa Manuel Antonio': [ 9.3882,  -84.1627],  // Manuel Antonio NP, Quepos
   'Costa Rica:Tortuguero':          [ 10.5369,  -83.5007],  // Tortuguero village, Caribbean coast
   // Paseos en automovil
-  'Costa Rica:Atirro':              [  9.8500,  -83.5500],  // Atirro, Turrialba canton, Cartago
+  'Costa Rica:Atirro':              [  9.8410,  -83.6499],  // Atirro, Turrialba canton
   'Costa Rica:Cahuita':             [  9.7414,  -82.8399],  // Cahuita National Park, Caribbean coast
-  'Costa Rica:Jardin Lankester':    [  9.8758,  -83.8952],  // Jardín Botánico Lankester, Paraíso, Cartago
-  'Costa Rica:Juan Viñas de Turrialba': [ 9.9093, -83.7452], // Juan Viñas, Jiménez canton, Cartago
-  'Costa Rica:Los Chiles':          [ 11.0280,  -84.7147],  // Los Chiles canton, Alajuela (near Nicaragua)
-  'Costa Rica:Perez Zeledon':       [  9.3708,  -83.6874],  // San Isidro del General, Pérez Zeledón
-  'Costa Rica:Rio Celeste':         [ 10.6986,  -85.0256],  // Río Celeste, Tenorio Volcano NP
+  'Costa Rica:Jardin Lankester':    [  9.8393,  -83.8901],  // Jardín Botánico Lankester, Paraíso, Cartago
+  'Costa Rica:Juan Viñas':          [  9.8946,  -83.7457],  // Juan Viñas, Jiménez canton, Cartago
+  'Costa Rica:Juan Viñas de Turrialba': [ 9.8946, -83.7457], // same, alternate label
+  'Costa Rica:Los Chiles':          [ 10.8570,  -84.7150],  // Los Chiles, Alajuela (near Nicaragua border)
+  'Costa Rica:Perez Zeledon':       [  9.3365,  -83.6484],  // San Isidro del General, Pérez Zeledón
+  'Costa Rica:Rio Celeste':         [ 10.7168,  -84.9440],  // Río Celeste, Tenorio Volcano NP
   'Costa Rica:Rosas de Llano Grande': [ 9.8770, -83.9380],  // Rosas, Llano Grande, Cartago
-  'Costa Rica:Sarapiquí':           [ 10.4338,  -84.0000],  // Puerto Viejo de Sarapiquí, Heredia
-  'Costa Rica:Sarchí':              [ 10.1006,  -84.3786],  // Sarchí, Alajuela (artisan crafts town)
+  'Costa Rica:Sarapiquí':           [ 10.4872,  -83.9957],  // Puerto Viejo de Sarapiquí, Heredia
+  'Costa Rica:Sarchí':              [ 10.1626,  -84.3152],  // Sarchí, Alajuela (artisan crafts town)
   'Costa Rica:Turrialba':           [  9.8897,  -83.6809],  // Turrialba city, Cartago (OSM rel 6278852)
   'Costa Rica:Tuis':                [  9.8396,  -83.5807],  // Tuis, Jiménez canton, Cartago
   'Costa Rica:Volcán Barva':        [ 10.1344,  -84.0992],  // Barva Volcano, Braulio Carrillo NP
   'Costa Rica:Zarcero':             [ 10.1784,  -84.3983],  // Zarcero, Alajuela (topiary park)
   // Paseos en bicicleta
-  'Costa Rica:Cinco pinos de Cartago': [ 9.8630, -83.9199],  // Cinco Pinos, Cartago area
-  'Costa Rica:Copalchí':            [  9.9168,  -83.8816],  // Copalchí, Oreamuno canton, Cartago
+  'Costa Rica:Cinco pinos de Cartago': [ 9.8246, -83.9334],  // Cinco Pinos, Cartago (Google Maps confirmed)
+  'Costa Rica:Copalchí':            [  9.8199,  -84.0344],  // Copalchí, Oreamuno canton, Cartago
   'Costa Rica:Escazú':              [  9.9154,  -84.1402],  // Escazú canton, San José metro
-  'Costa Rica:Llano Grande':        [  9.8770,  -83.9340],  // Llano Grande, Cartago
-  'Costa Rica:Parque de la paz':    [  9.9562,  -84.0831],  // Parque de la Paz, San José
-  'Costa Rica:Polideportivo Cartago': [ 9.8630, -83.9199],  // Polideportivo de Cartago city
-  'Costa Rica:Sanatorio Durán':     [  9.9157,  -83.8821],  // Sanatorio Durán, Irazú volcano slope
-  'Costa Rica:San Lorenzo de Flores': [ 9.9968, -84.0927],  // San Lorenzo, Flores canton, Heredia
-  'Costa Rica:San Luis de Heredia': [ 10.0013,  -84.1218],  // San Luis, Heredia canton
-  'Costa Rica:San Rafael de Heredia': [10.0187, -84.0906],  // San Rafael canton, Heredia
-  'Costa Rica:Santa Clara de Cartago': [ 9.8660, -83.9970], // Santa Clara, La Unión, Cartago
-  'Costa Rica:Tucurrique':          [  9.8803,  -83.7303],  // Tucurrique, Jiménez canton, Cartago
-  'Costa Rica:Turrialba-Lago Piri-5 Pinos': [ 9.9007, -83.6816], // Lago Piri area near Turrialba
-  // Family / personal (no specific city)
-  'Costa Rica:Colima':              [  9.9501,  -84.0730],  // Colima district, near San José
-  'Costa Rica:Mastatal':            [  9.6167,  -84.5500],  // small village, Puriscal canton
+  'Costa Rica:Llano Grande':        [  9.9389,  -83.9086],  // Llano Grande, Cartago
+  'Costa Rica:Parque de la paz':    [  9.9137,  -84.0719],  // Parque de la Paz, San José (OSM confirmed)
+  'Costa Rica:Polideportivo Cartago': [ 9.8570, -83.9261],  // Polideportivo de Cartago
+  'Costa Rica:Juegos Nacionales 2006': [ 9.8570, -83.9261], // same venue
+  'Costa Rica:Sanatorio Durán':     [  9.9330,  -83.8834],  // Sanatorio Durán, Irazú volcano slope
+  'Costa Rica:San Lorenzo de Flores': [ 10.0141, -84.1479],  // San Lorenzo, Flores canton, Heredia
+  'Costa Rica:San Luis de Heredia': [ 10.0069,  -84.0294],  // San Luis, Heredia canton
+  'Costa Rica:San Rafael de Heredia': [10.0133, -84.1005],  // San Rafael canton, Heredia
+  'Costa Rica:Santa Clara de Cartago': [ 9.8035, -83.9945], // Santa Clara, La Unión, Cartago
+  'Costa Rica:Tucurrique':          [  9.8541,  -83.7229],  // Tucurrique, Jiménez canton, Cartago
+  'Costa Rica:Turrialba-Lago Piri-5 Pinos': [ 9.8897, -83.6809], // Lago Piri, Turrialba area
+  // Cartago city (Whatsapp + Camera)
+  'Costa Rica:Cartago':             [  9.8607,  -83.9190],  // Cartago city
+  'Costa Rica:Cartago - Whatsapp':  [  9.8607,  -83.9190],  // same city
+  // Moravia (Camera + Whatsapp)
+  'Costa Rica:Moravia':             [  9.9595,  -84.0464],  // Moravia canton, San José
+  'Costa Rica:Moravia - Whatsapp':  [  9.9595,  -84.0464],  // same canton
+  'Costa Rica:Colegio María Inmaculada': [ 9.9595, -84.0464], // Colegio in Moravia
+  // UCR (two tag spellings)
+  'Costa Rica:Universidad de Costa Rica':  [  9.9355,  -84.0509],  // UCR main campus, San Pedro
+  'Costa Rica:Universidad de Costa RIca':  [  9.9355,  -84.0509],  // same (folder typo variant)
+  'Costa Rica:UCR':                        [  9.9355,  -84.0509],  // same
+  // Family / personal albums
+  'Costa Rica:Colima':              [  9.9501,  -84.0730],  // Colima district, Tibás, San José
+  'Costa Rica:Colima de Tibás':     [  9.9501,  -84.0730],  // same district (.Amigos tag spelling)
+  'Costa Rica:Colima de Tibás - Whatsapp': [ 9.9501, -84.0730],  // same
   'Costa Rica:Tibás':               [  9.9584,  -84.0786],  // Tibás canton, north of San José
-  'Costa Rica:UCR':                 [  9.9355,  -84.0509],  // Universidad de Costa Rica, San Pedro
+  'Costa Rica:Llorente de Tibás':   [  9.9631,  -84.0758],  // Llorente, Tibás canton
+  'Costa Rica:Mastatal':            [  9.6743,  -84.3740],  // Mastatal village, Puriscal canton
+  // San José metro / social venues
+  'Costa Rica:San José':            [  9.9281,  -84.0907],  // San José capital
+  'Costa Rica:Cervecería Costa Rica': [ 9.9494, -84.1003],  // Cervecería CR brewery, La Uruca
+  'Costa Rica:Club Español':        [  9.9281,  -84.0907],  // Club Español, San José
+  'Costa Rica:Volcán Arenal':       [ 10.4630,  -84.7036],  // Arenal Volcano, Alajuela
+  'Costa Rica:Volcán Miravalles':   [ 10.7480,  -85.1600],  // Miravalles Volcano, Guanacaste
+  // Beaches (Amigos/personal)
+  'Costa Rica:Playa Esterillos':    [  9.5386,  -84.5942],  // Esterillos Oeste, Puntarenas
+  'Costa Rica:Playa Mal Pais':      [  9.5739,  -85.1418],  // Mal País, Santa Teresa, Nicoya
 
   // ── Cuba ──────────────────────────────────────────────────────────────
   'Cuba:':               [ 23.1136,  -82.3666],  // Havana (capital fallback)
