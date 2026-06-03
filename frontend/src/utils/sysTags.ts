@@ -327,7 +327,8 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Formigal':     [ 42.7722,   -0.3803],  // ski resort, Huesca Pyrenees
   'España:Gastelugatxe': [ 43.4393,   -2.7739],  // iconic islet near Bermeo
   'España:Gran Canaria': [ 27.9202,  -15.5474],  // Las Palmas
-  'España:Timbachata Gran Canaria': [ 28.2940, -16.6210],  // Timbachata, Tenerife/Canarias area
+  'España:Maspalomas':   [ 27.7614,  -15.5897],  // Maspalomas, Gran Canaria (south coast)
+  'España:Timbachata Gran Canaria': [ 27.7614, -15.5897],  // Timbachata, Maspalomas, Gran Canaria
   'España:Granada':      [ 37.1773,   -3.5986],
   'España:Guernica':     [ 43.3163,   -2.6787],  // Gernika-Lumo, Basque Country
   'España:Guillen':      [ 43.2627,   -2.9253],  // Bilbao area
