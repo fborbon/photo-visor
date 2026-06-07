@@ -109,6 +109,7 @@ const t = {
     statsCumulative:       'Cumulative photos over time',
     statsMonthly:          'Photos per month',
     statsMonthsWithPhotos: 'months with photos',
+    statsTopCountries:     'Top Countries',
 
     // Slot machine
     tabSlots:         'Slot Machine',
@@ -263,6 +264,7 @@ const t = {
     statsCumulative:       'Fotos acumuladas a lo largo del tiempo',
     statsMonthly:          'Fotos por mes',
     statsMonthsWithPhotos: 'meses con fotos',
+    statsTopCountries:     'Países más fotografiados',
 
     // Tragaperras
     tabSlots:         'Tragaperras',

@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLang }   from '../context/LangContext';
 import { useIndex }  from '../hooks/useIndex';
-import { StatsIndex, MonthStat } from '../types';
+import { StatsIndex, MonthStat, Summary } from '../types';
 
 interface NavProps { onNavigate?: (year: number, month: number) => void; }
 
@@ -213,10 +213,51 @@ function MonthlyBarChart({ byMonth, onBarClick }: { byMonth: MonthStat[]; onBarC
   );
 }
 
+// ── Top-countries bar chart ────────────────────────────────────────────────
+function TopCountriesChart({ locations }: { locations: Summary['locations'] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const cw  = useContainerWidth(ref);
+
+  const byCountry = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const loc of locations) {
+      map.set(loc.country, (map.get(loc.country) ?? 0) + loc.count);
+    }
+    return [...map.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12)
+      .map(([country, count]) => ({ country, count }));
+  }, [locations]);
+
+  if (byCountry.length === 0) return null;
+  const maxV = byCountry[0].count;
+  const rowH = 28;
+  const labelW = 110;
+  const barArea = Math.max(1, cw - labelW - 60);
+
+  return (
+    <div ref={ref} style={{ width: '100%' }}>
+      {cw > 0 && byCountry.map(({ country, count }) => {
+        const barW = Math.round((count / maxV) * barArea);
+        return (
+          <div key={country} style={{ display: 'flex', alignItems: 'center', height: rowH, gap: 8 }}>
+            <span style={{ width: labelW, textAlign: 'right', fontSize: 12, color: '#888', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {country}
+            </span>
+            <div style={{ width: barW, height: 14, background: '#cc006a', borderRadius: 3, flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: '#666' }}>{count.toLocaleString()}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main view ──────────────────────────────────────────────────────────────
 export default function StatisticsView({ onNavigate }: NavProps) {
   const { tr } = useLang();
   const { data: stats, loading } = useIndex<StatsIndex>('index/stats.json');
+  const { data: summary } = useIndex<Summary>('index/summary.json');
 
   return (
     <div className="stats-layout">
@@ -251,6 +292,14 @@ export default function StatisticsView({ onNavigate }: NavProps) {
             <h3 className="stats-card-title">{tr.statsMonthly}</h3>
             <MonthlyBarChart byMonth={stats.by_month} onBarClick={onNavigate} />
           </div>
+
+          {/* ── Top countries ────────────────────────────────────────── */}
+          {summary?.locations && summary.locations.length > 0 && (
+            <div className="stats-card">
+              <h3 className="stats-card-title">{tr.statsTopCountries ?? 'Top Countries'}</h3>
+              <TopCountriesChart locations={summary.locations} />
+            </div>
+          )}
         </>
       )}
     </div>
