@@ -311,5 +311,7 @@
             "ym": "2025-12",
             "count": 2
         }
-    ]
+    ],
+    "storage_gb": 475,
+    "monthly_cost_usd": 2.42
 }

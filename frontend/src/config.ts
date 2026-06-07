@@ -1,4 +1,16 @@
-const config = {
+const IS_DEMO = (import.meta.env.VITE_DEMO as string | undefined) === 'true';
+
+const config = IS_DEMO ? {
+  cloudFrontUrl:            'https://picsum.photos',
+  indexBase:                '/photo-visor',
+  bucketName:               'demo',
+  cloudFrontDistributionId: '',
+  region:                   'eu-west-1',
+  userPoolId:               'demo',
+  userPoolClientId:         'demo',
+  identityPoolId:           'demo',
+  ownerEmail:               'demo@demo.com',
+} : {
   cloudFrontUrl:            'https://fotos.forwardforecasting.eu',
   indexBase:                'https://fotos.forwardforecasting.eu',
   bucketName:               'photo-visor-295936871972',
@@ -10,14 +22,14 @@ const config = {
   ownerEmail:               'correoprincipal2021@hotmail.com',
 };
 
-const EMAIL_DISPLAY_NAMES: Record<string, string> = {
+const EMAIL_DISPLAY_NAMES: Record<string, string> = IS_DEMO ? {} : {
   'correoprincipal2021@hotmail.com': 'Fernando',
   'ferborbon77@hotmail.com':         'Adrián',
   'rogui1900@gmail.com':             'Rosibel',
   'borgui11@gmail.com':              'Katherine',
 };
 
-const FEMALE_EMAILS = new Set([
+const FEMALE_EMAILS: Set<string> = IS_DEMO ? new Set() : new Set([
   'rogui1900@gmail.com',
   'borgui11@gmail.com',
 ]);

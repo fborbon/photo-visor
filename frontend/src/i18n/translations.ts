@@ -110,6 +110,11 @@ const t = {
     statsMonthly:          'Photos per month',
     statsMonthsWithPhotos: 'months with photos',
     statsTopCountries:     'Top Countries',
+    statsCountries:        'countries',
+    statsCities:           'cities',
+    statsStorage:          'storage',
+    statsTimeCovered:      'time covered',
+    statsMonthlyCost:      'AWS cost',
 
     // Slot machine
     tabSlots:         'Slot Machine',
@@ -265,6 +270,11 @@ const t = {
     statsMonthly:          'Fotos por mes',
     statsMonthsWithPhotos: 'meses con fotos',
     statsTopCountries:     'Países más fotografiados',
+    statsCountries:        'países',
+    statsCities:           'ciudades',
+    statsStorage:          'almacenamiento',
+    statsTimeCovered:      'período cubierto',
+    statsMonthlyCost:      'coste AWS',
 
     // Tragaperras
     tabSlots:         'Tragaperras',

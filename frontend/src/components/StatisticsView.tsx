@@ -259,6 +259,14 @@ export default function StatisticsView({ onNavigate }: NavProps) {
   const { data: stats, loading } = useIndex<StatsIndex>('index/stats.json');
   const { data: summary } = useIndex<Summary>('index/summary.json');
 
+  const countries = useMemo(
+    () => summary ? new Set(summary.locations.map(l => l.country)).size : 0,
+    [summary],
+  );
+  const cities = summary?.locations.length ?? 0;
+  const yearMin = summary ? Math.min(...summary.years) : null;
+  const yearMax = summary ? Math.max(...summary.years) : null;
+
   return (
     <div className="stats-layout">
       {loading && <p className="panel-loading">{tr.loading}</p>}
@@ -279,6 +287,40 @@ export default function StatisticsView({ onNavigate }: NavProps) {
               <span className="stats-kpi-num">{stats.by_month.length}</span>
               <span className="stats-kpi-label">{tr.statsMonthsWithPhotos}</span>
             </div>
+          </div>
+
+          {/* ── Second KPI row ───────────────────────────────────────── */}
+          <div className="stats-totals-row">
+            {countries > 0 && (
+              <div className="stats-kpi secondary">
+                <span className="stats-kpi-num">{countries}</span>
+                <span className="stats-kpi-label">{tr.statsCountries ?? 'countries'}</span>
+              </div>
+            )}
+            {cities > 0 && (
+              <div className="stats-kpi secondary">
+                <span className="stats-kpi-num">{cities}</span>
+                <span className="stats-kpi-label">{tr.statsCities ?? 'cities'}</span>
+              </div>
+            )}
+            {stats.storage_gb != null && (
+              <div className="stats-kpi secondary">
+                <span className="stats-kpi-num">{stats.storage_gb} GB</span>
+                <span className="stats-kpi-label">{tr.statsStorage ?? 'storage'}</span>
+              </div>
+            )}
+            {yearMin != null && yearMax != null && (
+              <div className="stats-kpi secondary">
+                <span className="stats-kpi-num">{yearMin}–{yearMax}</span>
+                <span className="stats-kpi-label">{tr.statsTimeCovered ?? 'time covered'}</span>
+              </div>
+            )}
+            {stats.monthly_cost_usd != null && (
+              <div className="stats-kpi secondary">
+                <span className="stats-kpi-num">${stats.monthly_cost_usd}/mo</span>
+                <span className="stats-kpi-label">{tr.statsMonthlyCost ?? 'AWS cost'}</span>
+              </div>
+            )}
           </div>
 
           {/* ── Cumulative chart ─────────────────────────────────────── */}

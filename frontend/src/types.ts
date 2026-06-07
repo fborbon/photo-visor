@@ -53,10 +53,12 @@ export interface AlbumItem {
 
 export interface MonthStat { ym: string; count: number; }
 export interface StatsIndex {
-  generated: string;
-  total:     number;
-  no_date:   number;
-  by_month:  MonthStat[];
+  generated:         string;
+  total:             number;
+  no_date:           number;
+  by_month:          MonthStat[];
+  storage_gb?:       number;
+  monthly_cost_usd?: number;
 }
 
 export interface AlbumRef {

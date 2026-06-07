@@ -7,11 +7,13 @@ const src = resolve(__dirname, 'src');
 export default defineConfig({
   plugins: [react()],
   base: '/photo-visor/',
+  define: {
+    // Injected at build time → IS_DEMO = true in config.ts → tree-shaking strips real credentials
+    'import.meta.env.VITE_DEMO': '"true"',
+  },
   resolve: {
     alias: [
-      // Swap config → demo config (cloudFrontUrl = picsum, indexBase = /photo-visor)
-      { find: resolve(src, 'config'), replacement: resolve(src, 'config.demo.ts') },
-      // Swap useIndex → demo hook (fetches from /photo-visor base)
+      // Swap useIndex → demo hook (fetches from /photo-visor base path)
       { find: resolve(src, 'hooks/useIndex'), replacement: resolve(src, 'hooks/useIndex.demo.ts') },
       // Swap contexts → no-auth demo versions
       { find: resolve(src, 'context/PrivacyContext'), replacement: resolve(src, 'context/PrivacyContext.demo.tsx') },
