@@ -1,8 +1,10 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useTags }    from '../context/TagsContext';
-import { useLang }    from '../context/LangContext';
-import { usePrivacy } from '../context/PrivacyContext';
-import { useIndex }   from '../hooks/useIndex';
+import { useTags }       from '../context/TagsContext';
+import { useLang }       from '../context/LangContext';
+import { usePrivacy }    from '../context/PrivacyContext';
+import { useNav, scrollToHash } from '../context/NavContext';
+import { useFavorites }  from '../context/FavoritesContext';
+import { useIndex }      from '../hooks/useIndex';
 import { PhotoEntry } from '../types';
 import PhotoGrid from './PhotoGrid';
 import { sysTagCountryKey, sysTagCityKey, sysTagLabel, translateCountry, translateCity } from '../utils/sysTags';
@@ -60,31 +62,42 @@ function diskPathToDisplay(displayPath: string): string {
 
 
 interface PathTreeNodeProps {
-  node:          TreeNode;
-  depth:         number;
-  expandedPaths: Set<string>;
-  selectedPath:  string | null;
-  onToggle:      (path: string) => void;
-  onSelect:      (vPath: string, s3Path: string) => void;
+  node:            TreeNode;
+  depth:           number;
+  expandedPaths:   Set<string>;
+  selectedPath:    string | null;
+  highlightedPath: string | null;
+  onToggle:        (path: string) => void;
+  onSelect:        (vPath: string, s3Path: string) => void;
 }
 
-function PathTreeNode({ node, depth, expandedPaths, selectedPath, onToggle, onSelect }: PathTreeNodeProps) {
-  const hasChildren = Object.keys(node.children).length > 0;
-  const isExpanded  = expandedPaths.has(node.fullPath);
-  const isSelected  = selectedPath === node.fullPath;
+function PathTreeNode({ node, depth, expandedPaths, selectedPath, highlightedPath, onToggle, onSelect }: PathTreeNodeProps) {
+  const hasChildren   = Object.keys(node.children).length > 0;
+  const isExpanded    = expandedPaths.has(node.fullPath);
+  const isSelected    = selectedPath === node.fullPath;
+  const isHighlighted = highlightedPath === node.fullPath;
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isHighlighted && rowRef.current) {
+      rowRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, [isHighlighted]);
 
   const handleRowClick = () => {
     if (hasChildren) {
-      onToggle(node.fullPath);   // intermediate folder → expand/collapse only
+      onToggle(node.fullPath);
     } else {
-      onSelect(node.fullPath, node.s3Path); // leaf folder → open photo grid
+      onSelect(node.fullPath, node.s3Path);
     }
   };
 
   return (
     <>
       <div
-        className={'path-tree-row' + (isSelected ? ' active' : '')}
+        ref={rowRef}
+        className={'path-tree-row' + (isSelected ? ' active' : '') + (isHighlighted ? ' highlighted' : '')}
         style={{ paddingLeft: depth * 14 + 6 }}
         onClick={handleRowClick}
         role="button"
@@ -96,6 +109,14 @@ function PathTreeNode({ node, depth, expandedPaths, selectedPath, onToggle, onSe
         </span>
         <span className="path-tree-icon">📁</span>
         <span className="path-tree-label">{node.name}</span>
+        <span
+          className={'fav-star' + (isFavorite(node.fullPath) ? ' fav-star--on' : '')}
+          role="button"
+          tabIndex={0}
+          title={isFavorite(node.fullPath) ? 'Remove from favorites' : 'Add to favorites'}
+          onClick={e => { e.stopPropagation(); toggleFavorite(node.fullPath); }}
+          onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); toggleFavorite(node.fullPath); } }}
+        >★</span>
       </div>
 
       {isExpanded && hasChildren && (
@@ -108,6 +129,7 @@ function PathTreeNode({ node, depth, expandedPaths, selectedPath, onToggle, onSe
               depth={depth + 1}
               expandedPaths={expandedPaths}
               selectedPath={selectedPath}
+              highlightedPath={highlightedPath}
               onToggle={onToggle}
               onSelect={onSelect}
             />
@@ -143,18 +165,28 @@ export default function TagsView() {
   const { tags, tagNames, sharedTags, sharedTagNames, systemTagIndex, systemTagsLoading, deleteTag, isMySharedTag } = useTags();
   const { lang, tr } = useLang();
   const { isOwner } = usePrivacy();
+  const { pendingNav, clearNav, navigate } = useNav();
+  // When this component mounts due to a folder-path navigation, bypass the module-level
+  // useIndex cache (which may hold a stale path_tags.json from earlier in the session).
+  const [pathTagsKey] = useState(() =>
+    pendingNav?.folderPath ? `index/path_tags.json?nc=${Date.now()}` : 'index/path_tags.json'
+  );
+  const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const [sel, setSel] = useState<Selected | null>(null);
   const [sysFilter,  setSysFilter]  = useState('');
   const [pathFilter, setPathFilter] = useState('');
   const [confirmDeleteTag, setConfirmDeleteTag] = useState<{ name: string; shared: boolean } | null>(null);
 
   // Section collapse
+  const [favOpen,      setFavOpen]      = useState(true);
   const [personalOpen, setPersonalOpen] = useState(true);
   const [systemOpen,   setSystemOpen]   = useState(true);
   const [pathOpen,     setPathOpen]     = useState(true);
 
   // Path tree expand state
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
+  const [highlightedPath, setHighlightedPath] = useState<string | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggleExpanded = useCallback((path: string) => {
     setExpandedPaths(prev => {
@@ -166,7 +198,7 @@ export default function TagsView() {
 
   // Path tags: {display, s3}[] — every entry has a real S3 index file
   // Non-owners only see Camera/ subtree
-  const { data: tagPathsData } = useIndex<TagPath[]>('index/path_tags.json');
+  const { data: tagPathsData } = useIndex<TagPath[]>(pathTagsKey);
   const tagPaths   = useMemo(() => {
     const all = tagPathsData ?? [];
     if (isOwner) return all;
@@ -291,6 +323,33 @@ export default function TagsView() {
     mainRef.current?.scrollTo({ top: 0, behavior: 'instant' });
   };
 
+  // Apply incoming nav: expand tree to target folder and scroll to photo hash.
+  useEffect(() => {
+    if (!pendingNav?.folderPath || !tagPaths.length) return;
+    const target = tagPaths.find(t => t.display === pendingNav.folderPath)
+      ?? tagPaths.find(t => pendingNav.folderPath!.startsWith(t.display));
+    if (!target) return;
+    // Expand all ancestors
+    const parts = target.display.split('/');
+    setExpandedPaths(prev => {
+      const next = new Set(prev);
+      for (let i = 1; i < parts.length; i++) next.add(parts.slice(0, i).join('/'));
+      return next;
+    });
+    select(target.display, 'path', undefined, target.s3);
+    // Highlight tree row and scroll it into view
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    setHighlightedPath(target.display);
+    highlightTimerRef.current = setTimeout(() => setHighlightedPath(null), 5000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNav, tagPaths]);
+
+  // After the folder's photos load, scroll to the target hash.
+  useEffect(() => {
+    if (!pendingNav?.hash || !sel) return;
+    scrollToHash(pendingNav.hash, undefined, clearNav);
+  }, [pendingNav, sel, clearNav]);
+
   const handleDeleteClick = (e: React.MouseEvent, name: string, shared: boolean) => {
     e.stopPropagation();
     setConfirmDeleteTag({ name, shared });
@@ -303,6 +362,39 @@ export default function TagsView() {
 
       {/* ── Tag rail ─────────────────────────────────────── */}
       <aside className="tags-rail" style={isMobile ? undefined : { width: railWidth }}>
+
+        {/* ══ Favorites ══ */}
+        {favorites.size > 0 && (
+          <>
+            <SectionHeading open={favOpen} onToggle={() => setFavOpen(v => !v)}>
+              ⭐ Favorites
+            </SectionHeading>
+            {favOpen && [...favorites].sort().map(path => {
+              const tagPath = tagPaths.find(t => t.display === path);
+              const parts2 = path.split('/');
+              const lastName = parts2[parts2.length - 1] ?? path;
+              return (
+                <div key={path} className="fav-row">
+                  <button
+                    className={'tag-rail-btn' + (sel?.name === path && sel.scope === 'path' ? ' active' : '')}
+                    onClick={() => navigate('tags', { hash: '', folderPath: path })}
+                    title={path}
+                  >
+                    <span className="tag-rail-name">📁 {lastName}</span>
+                  </button>
+                  <span
+                    className="fav-star fav-star--on"
+                    role="button"
+                    tabIndex={0}
+                    title="Remove from favorites"
+                    onClick={() => toggleFavorite(path)}
+                    onKeyDown={e => { if (e.key === 'Enter') toggleFavorite(path); }}
+                  >★</span>
+                </div>
+              );
+            })}
+          </>
+        )}
 
         {/* ══ Personal Tags ══ */}
         <SectionHeading open={personalOpen} onToggle={() => setPersonalOpen(v => !v)}>
@@ -405,6 +497,7 @@ export default function TagsView() {
                         depth={0}
                         expandedPaths={expandedPaths}
                         selectedPath={sel?.scope === 'path' ? sel.name : null}
+                        highlightedPath={highlightedPath}
                         onToggle={toggleExpanded}
                         onSelect={(diskPath, s3Path) => select(diskPath, 'path', undefined, s3Path)}
                       />
@@ -462,7 +555,7 @@ export default function TagsView() {
                     {albumLoading && <p className="panel-loading">{tr.loading}</p>}
                     {albumPhotos  && (
                       <>
-                        <PhotoGrid photos={albumPhotos} />
+                        <PhotoGrid photos={albumPhotos} navMode="tags" />
                         <div className="back-to-top-wrap">
                           <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
                         </div>
@@ -476,7 +569,7 @@ export default function TagsView() {
             {entry.photos.length > 0
               ? (
                 <>
-                  <PhotoGrid photos={entry.photos} />
+                  <PhotoGrid photos={entry.photos} navMode="tags" />
                   <div className="back-to-top-wrap">
                     <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
                   </div>
@@ -510,6 +603,7 @@ export default function TagsView() {
                     translateCity(sysTagCityKey(sel.name), lang),
                     translateCountry(sysTagCountryKey(sel.name), lang),
                   ].filter(Boolean).join(', ')}
+                  navMode="tags"
                 />
                 <div className="back-to-top-wrap">
                   <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
@@ -524,6 +618,14 @@ export default function TagsView() {
           <>
             <div className="tags-header">
               <h2 className="tags-selected-name">📁 {diskPathToDisplay(sel.name)}</h2>
+              {pathPhotos && <span className="tag-owner-hint">{pathPhotos.length} {tr.taggedPhotos}</span>}
+              <button
+                className="path-copy-btn"
+                title="Copy path for Sync tab Force path"
+                onClick={() => navigator.clipboard.writeText(sel.name).catch(() => {})}
+              >
+                📋 Copy path
+              </button>
             </div>
             {pathLoading && <p className="panel-loading">{tr.loading}</p>}
             {!pathLoading && pathPhotos === null && (
@@ -534,7 +636,7 @@ export default function TagsView() {
             )}
             {pathPhotos && pathPhotos.length > 0 && (
               <>
-                <PhotoGrid photos={pathPhotos} placeFallback={folderFullLabel(sel.name)} />
+                <PhotoGrid photos={pathPhotos} placeFallback={folderFullLabel(sel.name)} navMode="path" />
                 <div className="back-to-top-wrap">
                   <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
                 </div>

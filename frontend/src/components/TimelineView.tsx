@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useIndex }   from '../hooks/useIndex';
 import { useLang }    from '../context/LangContext';
 import { usePrivacy } from '../context/PrivacyContext';
+import { useNav, scrollToHash } from '../context/NavContext';
 import { Summary, PhotoEntry } from '../types';
 import PhotoGrid from './PhotoGrid';
 
@@ -15,6 +16,7 @@ interface Props { initialYear?: number; initialMonth?: number; }
 export default function TimelineView({ initialYear, initialMonth }: Props) {
   const { tr }                       = useLang();
   const { isOwner, isPhotoPrivate }  = usePrivacy();
+  const { pendingNav, clearNav }     = useNav();
   const { data: summary }            = useIndex<Summary>('index/summary.json');
   const years = useMemo(
     () => (summary ? [...summary.years].sort((a, b) => b - a) : []),
@@ -23,15 +25,38 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
 
   const mainRef        = useRef<HTMLDivElement>(null);
   const mountedRef     = useRef(false);
+  // Prevent year-change effect from clearing the month when navigating to a specific month.
+  const skipMonthReset = useRef(false);
+  // True when the year was auto-selected on open so we also auto-pick the latest month.
+  const autoSelectMonth = useRef(false);
 
   const [selectedYear,  setSelectedYear]  = useState<number | null>(initialYear  ?? null);
   const [selectedMonth, setSelectedMonth] = useState<number | null>(initialMonth ?? null);
 
-  // Reset month when year changes — but not on the initial mount (preserves initialMonth)
+  // Auto-select latest year on first load when no year is already set.
+  useEffect(() => {
+    if (years.length === 0) return;
+    if (selectedYear !== null) return;
+    if (pendingNav?.year) return;
+    skipMonthReset.current = true;
+    autoSelectMonth.current = true;
+    setSelectedYear(years[0]);
+  }, [years]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset month when year changes — skip when a cross-tab nav has already set it.
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return; }
+    if (skipMonthReset.current) { skipMonthReset.current = false; return; }
     setSelectedMonth(null);
   }, [selectedYear]);
+
+  // Apply incoming nav: set year+month, flag to prevent year-change from clearing month.
+  useEffect(() => {
+    if (!pendingNav?.year) return;
+    if (pendingNav.month) skipMonthReset.current = true;
+    setSelectedYear(pendingNav.year);
+    if (pendingNav.month) setSelectedMonth(pendingNav.month);
+  }, [pendingNav]);
 
   const yearKey = selectedYear ? 'index/time/' + selectedYear + '.json' : null;
   const { data: yearPhotos, loading } = useIndex<PhotoEntry[]>(yearKey);
@@ -54,6 +79,20 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
   const activeGroup = selectedMonth !== null
     ? monthGroups.find(g => g.month === selectedMonth) ?? null
     : null;
+
+  // Auto-select the latest month after auto year selection.
+  useEffect(() => {
+    if (!autoSelectMonth.current) return;
+    if (monthGroups.length === 0) return;
+    autoSelectMonth.current = false;
+    setSelectedMonth(monthGroups[monthGroups.length - 1].month);
+  }, [monthGroups]);
+
+  // Scroll to the pending photo hash once the month's photos are rendered.
+  useEffect(() => {
+    if (!pendingNav?.hash || !activeGroup) return;
+    scrollToHash(pendingNav.hash, undefined, clearNav);
+  }, [activeGroup, pendingNav, clearNav]);
 
   return (
     <div className="timeline-layout">
@@ -111,7 +150,7 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
                       {activeGroup.photos.length} {tr.photos}
                     </span>
                   </div>
-                  <PhotoGrid photos={activeGroup.photos} />
+                  <PhotoGrid photos={activeGroup.photos} navMode="timeline" />
                   <div className="back-to-top-wrap">
                     <button
                       className="back-to-top-btn"

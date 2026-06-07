@@ -27,8 +27,7 @@ function fmt(dt: string, months: readonly string[]): string {
 export default function LatestView() {
   const { tr }  = useLang();
   const ctx     = useTags();
-  const [subtab,    setSubtab]    = useState<Subtab>('added');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [subtab, setSubtab] = useState<Subtab>('added');
 
   const [clearedAdded,    setClearedAdded]    = useState(() => loadCleared('added'));
   const [clearedTags,     setClearedTags]     = useState(() => loadCleared('tags'));
@@ -107,12 +106,10 @@ export default function LatestView() {
     }
 
     return items
-      .sort((a, b) => sortOrder === 'desc'
-        ? b.sort.localeCompare(a.sort)
-        : a.sort.localeCompare(b.sort))
+      .sort((a, b) => b.sort.localeCompare(a.sort))
       .slice(0, 100)
       .map(x => x.photo);
-  }, [syncedRecords, photoByHash, recentIndex, clearedAdded, clearedAddedMs, sortOrder]);
+  }, [syncedRecords, photoByHash, recentIndex, clearedAdded, clearedAddedMs]);
 
   // ── Tags subtab ───────────────────────────────────────────────────
   const allTagsSorted = [
@@ -172,24 +169,12 @@ export default function LatestView() {
       {/* ── Added ─────────────────────────────────────────────────── */}
       {subtab === 'added' && (
         <div className="latest-body">
-          {addedPhotos.length > 0 && (
-            <div className="timeline-sort-row">
-              <button
-                className={'timeline-sort-btn' + (sortOrder === 'desc' ? ' active' : '')}
-                onClick={() => setSortOrder('desc')}
-              >↓ Newest</button>
-              <button
-                className={'timeline-sort-btn' + (sortOrder === 'asc' ? ' active' : '')}
-                onClick={() => setSortOrder('asc')}
-              >↑ Oldest</button>
-            </div>
-          )}
           {recentLoading && <p className="panel-loading">{tr.loading}</p>}
           {!recentLoading && addedPhotos.length === 0 && (
             <p className="panel-loading">{tr.noRecentPhotos}</p>
           )}
           {addedPhotos.length > 0 && (
-            <PhotoGrid photos={addedPhotos} title={tr.latestAdded} />
+            <PhotoGrid photos={addedPhotos} title={tr.latestAdded} navMode="latest" />
           )}
         </div>
       )}

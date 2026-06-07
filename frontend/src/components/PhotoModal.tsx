@@ -54,8 +54,15 @@ export default function PhotoModal({ photo, onClose, onPrev, onNext, onAddTag, o
   const [decoding,     setDecoding]     = useState(false);
   const [decodeFailed, setDecodeFailed] = useState(false);
   const [displayUrl,   setDisplayUrl]   = useState<string | null>(null);
+  const [isMuted,      setIsMuted]      = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const isVideo = VIDEO_EXTS.test(photo.s3_key ?? '');
+
+  // React's `muted` prop is broken for <video> — must set via DOM ref.
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = isMuted;
+  }, [isMuted]);
 
   const thumbUrl = photo.thumb  ? config.cloudFrontUrl + '/' + photo.thumb  : null;
   const isHeic   = /\.(heic|heif)$/i.test(photo.s3_key ?? '');
@@ -267,16 +274,28 @@ export default function PhotoModal({ photo, onClose, onPrev, onNext, onAddTag, o
 
         <div className="modal-image-wrap" ref={wrapRef}>
           {isVideo && rawUrl ? (
-            <video
-              className="modal-video"
-              src={photo.video_proxy ? config.cloudFrontUrl + '/' + photo.video_proxy : rawUrl}
-              controls
-              muted={false}
-              autoPlay={false}
-              onLoadedData={() => setFullLoaded(true)}
-              onError={() => setFullLoaded(true)}
-              style={{ opacity: fullLoaded ? 1 : 0, transition: fullLoaded ? 'opacity .3s' : 'none' }}
-            />
+            <>
+              <video
+                ref={el => {
+                  videoRef.current = el;
+                  if (el) el.muted = isMuted;
+                }}
+                className="modal-video"
+                src={photo.video_proxy ? config.cloudFrontUrl + '/' + photo.video_proxy : rawUrl}
+                controls
+                autoPlay
+                onLoadedData={() => setFullLoaded(true)}
+                onError={() => setFullLoaded(true)}
+                style={{ opacity: fullLoaded ? 1 : 0, transition: fullLoaded ? 'opacity .3s' : 'none' }}
+              />
+              <button
+                className="modal-mute-btn"
+                onClick={() => setIsMuted(m => !m)}
+                title={isMuted ? 'Unmute' : 'Mute'}
+              >
+                {isMuted ? '🔇' : '🔊'}
+              </button>
+            </>
           ) : displayUrl ? (
             <img
               className="modal-img"

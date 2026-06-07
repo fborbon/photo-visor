@@ -10,12 +10,12 @@ export default defineConfig({
   resolve: {
     alias: [
       // Swap config → demo config (cloudFrontUrl = picsum, indexBase = /photo-visor)
-      { find: /^(.+)\/config$/, replacement: resolve(src, 'config.demo.ts') },
+      { find: resolve(src, 'config'), replacement: resolve(src, 'config.demo.ts') },
       // Swap useIndex → demo hook (fetches from /photo-visor base)
-      { find: /^(.+)\/hooks\/useIndex$/, replacement: resolve(src, 'hooks/useIndex.demo.ts') },
+      { find: resolve(src, 'hooks/useIndex'), replacement: resolve(src, 'hooks/useIndex.demo.ts') },
       // Swap contexts → no-auth demo versions
-      { find: /^(.+)\/context\/PrivacyContext$/, replacement: resolve(src, 'context/PrivacyContext.demo.tsx') },
-      { find: /^(.+)\/context\/TagsContext$/,    replacement: resolve(src, 'context/TagsContext.demo.tsx') },
+      { find: resolve(src, 'context/PrivacyContext'), replacement: resolve(src, 'context/PrivacyContext.demo.tsx') },
+      { find: resolve(src, 'context/TagsContext'),    replacement: resolve(src, 'context/TagsContext.demo.tsx') },
     ],
   },
   build: {

@@ -6,18 +6,13 @@ import { useLang } from '../context/LangContext';
 const ALBUM_CONFIG_KEY = 'photo_sync_album_configs';
 
 interface Props {
-  status:                SyncStatus;
-  lastSync:              Date | null;
-  autoSync:              boolean;
-  setAutoSync:           (v: boolean) => void;
-  onSyncNow:             (albumConfigs: Record<string, AlbumConfig>) => void;
-  onSyncDesktop:         (files: File[], cfg: AlbumConfig, folderName: string) => void;
-  onStopSync:            () => void;
-  fixing:                boolean;
-  fixResult:             string;
-  onMarkNonCameraPrivate:() => void;
-  onLoadAlbums:          () => Promise<AlbumItem[]>;
-  isNative:              boolean;
+  status:        SyncStatus;
+  lastSync:      Date | null;
+  onSyncNow:     (albumConfigs: Record<string, AlbumConfig>) => void;
+  onSyncDesktop: (files: File[], cfg: AlbumConfig, folderName: string) => void;
+  onStopSync:    () => void;
+  onLoadAlbums:  () => Promise<AlbumItem[]>;
+  isNative:      boolean;
 }
 
 function formatRelative(date: Date): string {
@@ -39,31 +34,28 @@ function saveConfigs(configs: Record<string, AlbumConfig>) {
   localStorage.setItem(ALBUM_CONFIG_KEY, JSON.stringify(configs));
 }
 
-function defaultConfig(album: AlbumItem): AlbumConfig {
-  return { sync: true, private: !album.isCamera, location: '', description: '' };
+function defaultConfig(): AlbumConfig {
+  return { sync: true, location: '', forcePath: '', createFolder: true };
 }
 
 export default function SyncView({
-  status, lastSync, autoSync, setAutoSync,
+  status, lastSync,
   onSyncNow, onSyncDesktop, onStopSync,
-  fixing, fixResult, onMarkNonCameraPrivate,
   onLoadAlbums, isNative,
 }: Props) {
   const { tr } = useLang();
 
   // Mobile: loaded album list
-  const [albums,       setAlbums]       = useState<AlbumItem[]>([]);
+  const [albums,        setAlbums]        = useState<AlbumItem[]>([]);
   const [albumsLoading, setAlbumsLoading] = useState(false);
 
-  // Per-album configs (both mobile albums and desktop folder use same structure)
+  // Per-album configs
   const [albumConfigs, setAlbumConfigs] = useState<Record<string, AlbumConfig>>(loadSavedConfigs);
 
   // Desktop: files selected via folder picker
   const [desktopFiles,      setDesktopFiles]      = useState<File[]>([]);
   const [desktopFolderName, setDesktopFolderName] = useState('');
-  const [desktopConfig,     setDesktopConfig]     = useState<AlbumConfig>({
-    sync: true, private: false, location: '', description: '',
-  });
+  const [desktopConfig,     setDesktopConfig]     = useState<AlbumConfig>(defaultConfig());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isRunning = status.phase === 'enumerating' || status.phase === 'syncing';
@@ -71,15 +63,12 @@ export default function SyncView({
     ? Math.round((status.processed / status.total) * 100)
     : 0;
 
-  // Get effective config for an album (fall back to sensible defaults)
   const getConfig = (album: AlbumItem): AlbumConfig =>
-    albumConfigs[album.identifier] ?? defaultConfig(album);
+    ({ ...defaultConfig(), ...albumConfigs[album.identifier] });
 
   const updateAlbumConfig = (id: string, patch: Partial<AlbumConfig>) => {
     setAlbumConfigs(prev => {
-      const album = albums.find(a => a.identifier === id);
-      const base  = album ? defaultConfig(album) : { sync: true, private: false, location: '', description: '' };
-      const next  = { ...prev, [id]: { ...base, ...prev[id], ...patch } };
+      const next = { ...prev, [id]: { ...defaultConfig(), ...prev[id], ...patch } };
       saveConfigs(next);
       return next;
     });
@@ -99,7 +88,7 @@ export default function SyncView({
       .webkitRelativePath?.split('/')[0] ?? 'Folder';
     setDesktopFiles(files);
     setDesktopFolderName(folderName);
-    setDesktopConfig({ sync: true, private: false, location: '', description: '' });
+    setDesktopConfig(defaultConfig());
   };
 
   const handleSyncNow = () => {
@@ -123,19 +112,6 @@ export default function SyncView({
       <h2 className="sync-heading">
         {isNative ? tr.syncTitle : tr.syncDesktopTitle}
       </h2>
-
-      {/* ── Auto-sync toggle (mobile only) ─────────────────────── */}
-      {isNative && (
-        <label className="sync-auto-toggle">
-          <input
-            type="checkbox"
-            checked={autoSync}
-            onChange={e => setAutoSync(e.target.checked)}
-            disabled={isRunning}
-          />
-          {tr.syncAutoToggle}
-        </label>
-      )}
 
       {/* ── Last sync info ──────────────────────────────────────── */}
       <div className="sync-last">
@@ -173,15 +149,6 @@ export default function SyncView({
                           {album.isCamera ? '📷' : '🗂'} {album.name}
                         </span>
                       </label>
-                      <label className="sync-album-private-check">
-                        <input
-                          type="checkbox"
-                          checked={cfg.private}
-                          onChange={e => updateAlbumConfig(album.identifier, { private: e.target.checked })}
-                          disabled={isRunning || !cfg.sync}
-                        />
-                        🔒 {tr.syncPrivate}
-                      </label>
                     </div>
                     {cfg.sync && (
                       <div className="sync-album-fields">
@@ -196,11 +163,22 @@ export default function SyncView({
                         <input
                           className="sync-album-input"
                           type="text"
-                          placeholder={tr.syncDescriptionPlaceholder}
-                          value={cfg.description}
-                          onChange={e => updateAlbumConfig(album.identifier, { description: e.target.value })}
+                          placeholder="Force path (e.g. Camera/Europa/España/Pamplona)"
+                          value={cfg.forcePath}
+                          onChange={e => updateAlbumConfig(album.identifier, { forcePath: e.target.value.replace(/\/+$/, '') })}
                           disabled={isRunning}
                         />
+                        {(cfg.forcePath ?? '').trim() && (
+                          <label className="sync-album-create-folder">
+                            <input
+                              type="checkbox"
+                              checked={cfg.createFolder}
+                              onChange={e => updateAlbumConfig(album.identifier, { createFolder: e.target.checked })}
+                              disabled={isRunning}
+                            />
+                            Create subfolder "{album.name}" inside path
+                          </label>
+                        )}
                         <div className="sync-tag-preview">
                           🏷 {tag}
                         </div>
@@ -209,14 +187,6 @@ export default function SyncView({
                   </div>
                 );
               })}
-            </div>
-          )}
-
-          {/* Privacy legend */}
-          {albums.length === 0 && !albumsLoading && (
-            <div className="sync-notes">
-              <div className="sync-note sync-note--public">📷 {tr.syncCameraNote}</div>
-              <div className="sync-note sync-note--private">🔒 {tr.syncOtherNote}</div>
             </div>
           )}
         </div>
@@ -248,15 +218,6 @@ export default function SyncView({
                 📁 {desktopFolderName}
                 <span className="sync-desktop-count">{imageCount} {tr.syncImageFiles}</span>
               </div>
-              <label className="sync-album-private-check sync-album-private-check--desktop">
-                <input
-                  type="checkbox"
-                  checked={desktopConfig.private}
-                  onChange={e => setDesktopConfig(p => ({ ...p, private: e.target.checked }))}
-                  disabled={isRunning}
-                />
-                🔒 {tr.syncPrivate}
-              </label>
               <input
                 className="sync-album-input"
                 type="text"
@@ -268,11 +229,22 @@ export default function SyncView({
               <input
                 className="sync-album-input"
                 type="text"
-                placeholder={tr.syncDescriptionPlaceholder}
-                value={desktopConfig.description}
-                onChange={e => setDesktopConfig(p => ({ ...p, description: e.target.value }))}
+                placeholder="Force path (e.g. Camera/Europa/España/Pamplona)"
+                value={desktopConfig.forcePath}
+                onChange={e => setDesktopConfig(p => ({ ...p, forcePath: e.target.value.replace(/\/+$/, '') }))}
                 disabled={isRunning}
               />
+              {desktopConfig.forcePath.trim() && (
+                <label className="sync-album-create-folder">
+                  <input
+                    type="checkbox"
+                    checked={desktopConfig.createFolder}
+                    onChange={e => setDesktopConfig(p => ({ ...p, createFolder: e.target.checked }))}
+                    disabled={isRunning}
+                  />
+                  Create subfolder "{desktopFolderName}" inside path
+                </label>
+              )}
               <div className="sync-tag-preview">
                 🏷 {deriveTagName(desktopConfig, desktopFolderName)}
               </div>
@@ -346,20 +318,6 @@ export default function SyncView({
               {status.failed   > 0 && <span className="sync-stat sync-stat--fail">✕ {status.failed} {tr.syncFailed}</span>}
             </div>
           )}
-        </div>
-      )}
-
-      {/* ── One-time retroactive fix (mobile only) ──────────────── */}
-      {isNative && (
-        <div className="sync-fix-section">
-          <button
-            className="sync-fix-btn"
-            onClick={onMarkNonCameraPrivate}
-            disabled={fixing || isRunning}
-          >
-            {fixing ? '🔒 Marking private…' : '🔒 Mark non-Camera photos as private'}
-          </button>
-          {fixResult && <div className="sync-fix-result">{fixResult}</div>}
         </div>
       )}
     </div>

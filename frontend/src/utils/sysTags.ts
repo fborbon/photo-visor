@@ -7,12 +7,17 @@ export const COUNTRY_ALIASES: Record<string, string> = {
   'canadá':    'Canada',
   'canada':    'Canada',
   'yugoslavia':'Croatia',
+  'turquía':   'Turquia',   // accented folder name → canonical key
 };
 
 export const CITY_ALIASES: Record<string, string> = {
+  'instanbul':            'Istanbul',             // common misspelling (extra n)
+  'instambul':            'Istanbul',             // common misspelling (mb instead of nb)
+  'hamburgo':             'Hamburg',              // Spanish name → German canonical
   'logrono':              'Logroño',
   'londres':              'London',               // normalize folder spelling
-  'rio urederra':         'Urederra',             // merge Rio Urederra with Urederra → 4-pin circle
+  'rio urederra':         'Urederra',             // unaccented folder spelling
+  'río urederra':         'Urederra',             // accented folder spelling (most common)
   'alaiz aerial view':    'Alaiz',                // merge Alaiz sub-albums → circle-spread
   'alaiz desde carretera':'Alaiz',
   'alaiz visita newa':    'Alaiz',
@@ -23,6 +28,9 @@ export const CITY_ALIASES: Record<string, string> = {
   'vitoria-gasteiz':      'Vitoria',             // same city, alternate name
   'milan':                'Milano',              // same city, alternate spelling
   'universidad de costa rica':  'Universidad de Costa Rica',  // normalises the "RIca" typo variant
+  // Combined city/subcity alias: only matches when both levels are present,
+  // so "Moravia - Whatsapp" (no subcity) stays as "Moravia".
+  'moravia/colegio maría inmaculada': 'Colegio María Inmaculada',
   'retorno de eva':             'Sevilla',   // Retorno de Eva album is in Sevilla → circle-spread
   'semana santa abril 2013':    'Sevilla',   // Semana Santa album is in Sevilla → circle-spread
 };
@@ -37,6 +45,18 @@ export function leadingCity(segment: string): string {
   const ends = [d, s].filter(i => i > 0);
   const raw = ends.length ? segment.slice(0, Math.min(...ends)) : segment;
   const stripped = raw.replace(/ \d+$/, '').trim();
+  // If the segment has a slash, check the combined "city/subcity" alias first.
+  // This allows "Moravia/Colegio María Inmaculada" → "Colegio María Inmaculada"
+  // without remapping plain "Moravia" references.
+  if (s > 0) {
+    const rest    = segment.slice(s + 1);
+    const d2      = rest.indexOf(' - ');
+    const s2      = rest.indexOf('/');
+    const ends2   = [d2, s2].filter(i => i > 0);
+    const sub     = ends2.length ? rest.slice(0, Math.min(...ends2)) : rest;
+    const subKey  = stripped.toLowerCase() + '/' + sub.replace(/ \d+$/, '').trim().toLowerCase();
+    if (CITY_ALIASES[subKey]) return CITY_ALIASES[subKey];
+  }
   return CITY_ALIASES[stripped.toLowerCase()] ?? stripped;
 }
 
@@ -101,7 +121,6 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Alemania:Munich':     [ 48.1351,   11.5820],
   'Alemania:Múnich':     [ 48.1351,   11.5820],
   'Alemania:Braunschweig': [ 52.2689,  10.5268],
-  'Alemania:Toulouse':   [ 43.6047,    1.4442],  // Toulouse trip via Sarah's .Amigos album
   'Alemania:Dortmund':   [ 51.5136,    7.4653],
   'Alemania:Stuttgart':  [ 48.7758,    9.1829],
   'Alemania:Vallendar':  [ 50.4028,    7.6053],  // small city in Rhineland-Palatinate
@@ -127,15 +146,24 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Argentina:Tucumán':   [-26.8083,  -65.2176],
   'Argentina:Ushuaia':   [-54.8019,  -68.3030],
 
-  // ── Asia (continent prefix tags) ──────────────────────────────────────
+  // ── Asia / Oceania ────────────────────────────────────────────────────
+  'Australia:':          [-33.8688,  151.2093],  // Sydney (capital fallback)
   'Australia:Sydney':    [-33.8688,  151.2093],
+  'Finlandia:':          [ 60.1699,   24.9384],  // Helsinki (capital fallback)
+  'Finlandia:Helsinki':  [ 60.1699,   24.9384],
+  'Indonesia:':          [ -6.2088,  106.8456],  // Jakarta (capital fallback)
+  'Indonesia:Bali':      [ -8.4095,  115.1889],  // Bali, OSM node
+  'Israel:':             [ 31.7683,   35.2137],  // Jerusalem (capital fallback)
   'Israel:Jerusalem':    [ 31.7683,   35.2137],
   'Israel:Jerusalén':    [ 31.7683,   35.2137],
   'Israel:Tel Aviv':     [ 32.0853,   34.7818],
+  'Japón:':              [ 35.6762,  139.6503],  // Tokyo (capital fallback)
   'Japón:Tokyo':         [ 35.6762,  139.6503],
   'Japón:Tokio':         [ 35.6762,  139.6503],
+  'Tailandia:':          [ 13.7563,  100.5018],  // Bangkok (capital fallback)
   'Tailandia:Bangkok':   [ 13.7563,  100.5018],
   'Tailandia:Bankok':    [ 13.7563,  100.5018],  // common misspelling in tags
+  'UAE:':                [ 25.2048,   55.2708],  // Dubai (capital fallback)
   'UAE:Dubai':           [ 25.2048,   55.2708],
   'Emiratos Árabes Unidos:Dubai': [25.2048, 55.2708],
   'Emiratos Árabes:Dubai': [25.2048, 55.2708],
@@ -300,9 +328,13 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Albarracin':   [ 40.4092,   -1.4380],  // medieval walled town, Teruel
   'España:Andalucia':    [ 37.5443,   -4.7278],  // Andalusia region centroid
   'España:Andorra':      [ 42.5063,    1.5218],  // trip to Andorra from Spain
+  'España:Anguiano':     [ 42.2120,   -2.7588],  // La Rioja (Danzas de los Zancos)
   'España:Anguiano y Atapuerca': [42.3030, -3.1640], // La Rioja + Burgos area
+  'España:Aoiz':         [ 42.7836,   -1.3817],  // Agoitz, Navarra
+  'España:Aralar':       [ 43.0583,   -2.1167],  // Sierra de Aralar, Navarra/Gipuzkoa
   'España:Asturias':     [ 43.3614,   -5.8593],  // Oviedo (regional capital)
   'España:Astun':        [ 42.8010,   -0.5510],  // ski resort, Huesca Pyrenees
+  'España:Astún':        [ 42.8010,   -0.5510],  // accented spelling
   'España:Barcelona':    [ 41.3851,    2.1734],
   'España:Bilbao':       [ 43.2627,   -2.9253],
   'España:Burgos':       [ 42.3440,   -3.6969],
@@ -357,6 +389,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Aranjuez':     [ 40.0322,   -3.6023],
   'España:Benidorm':     [ 38.5386,   -0.1317],
   'España:Bermeo':       [ 43.4197,   -2.7211],  // Basque fishing port
+  'España:Bodega Isios': [ 42.5584,   -2.5730],  // Bodegas Ysios, Laguardia, Álava
   'España:Bosque de Oma': [43.3572,   -2.7400],  // painted forest, Bizkaia
   'España:Cabo de Gata': [ 36.7285,   -2.0217],  // natural park, Almería coast
   'España:Cartagena':    [ 37.6074,   -0.9897],  // Murcia region
@@ -368,12 +401,14 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Huesca':       [ 42.1401,   -0.4089],
   'España:León':         [ 42.5987,   -5.5671],
   'España:Merida':       [ 38.9143,   -6.3477],  // Extremadura
+  'España:Ordesa':       [ 42.6340,    0.0190],  // Ordesa y Monte Perdido NP, Huesca Pyrenees
   'España:Mundaka':      [ 43.4072,   -2.6961],  // surf town, Bizkaia
   'España:Murcia':       [ 37.9845,   -1.1285],
   'España:Nerja':        [ 36.7572,   -3.8709],  // Andalusia coast
   'España:Sabiñánigo':   [ 42.5219,   -0.3644],  // Huesca Pyrenees
   'España:Soria':        [ 41.7631,   -2.4647],
   'España:Nacionalidad': [ 40.4168,   -3.7038],  // nationality ceremony, Madrid
+  'España:Concierto Malu': [ 42.8125,  -1.6458],  // concert event (Pamplona area, Abril 2013)
   'España:Navarra':      [ 42.8166,   -1.6434],  // → Pamplona (regional capital)
   'España:Aibar':        [ 42.5461,   -1.3906],  // town in Navarra
   'España:Alaiz':              [ 42.7167,   -1.6333],  // mountain/wind farm area near Pamplona
@@ -403,7 +438,9 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Eugui':        [ 42.9972,   -1.5478],  // village and reservoir, Navarra
   'España:Foz de Arbayun': [42.6561,  -1.2733],  // gorge natural reserve, Navarra
   'España:Foz de Lumbier': [42.6533,  -1.3050],  // gorge near Lumbier, Navarra
+  'España:Iga de Monreal': [ 42.7233,  -1.5153],  // Monreal area, Navarra
   'España:Isaba':        [ 42.8622,   -0.9128],  // Roncal valley, Navarra
+  'España:Lantz':        [ 43.0556,   -1.6917],  // Carnival village, Odieta valley, Navarra
   'España:Lesaka':       [ 43.2564,   -1.7322],  // town, north Navarra
   'España:Mesa de los 3 reyes': [42.8800, -0.7450], // highest peak in Navarra
   'España:Milagro':      [ 42.2333,   -1.7833],  // town, Ribera Navarra
@@ -411,12 +448,14 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Monte El Perdon': [42.7547,  -1.7017],  // wind-farm hill near Pamplona
   'España:Ochagavia':    [ 42.9181,   -1.0772],  // Salazar valley, Navarra
   'España:Olite':        [ 42.4806,   -1.6511],  // castle town, Navarra
+  'España:Olloki':       [ 42.8733,   -1.5911],  // village in Iza valley, near Pamplona
   'España:Parque Aralar': [43.0583,   -2.1167],  // natural park, Navarra/Gipuzkoa
   'España:Petilla de Aragon': [42.4556, -1.0800], // enclave village, Navarra
   'España:Puente de la Reina': [42.6722, -1.8111], // pilgrim town, Navarra
   'España:Puente La Reina': [42.6722,  -1.8111],  // same town, alternate folder name
   'España:Pueyo':        [ 42.5667,   -1.6475],  // Pueyo, Navarra
   'España:Ribadesella':  [ 43.4614,   -5.0606],  // coastal town, Asturias (Descenso del Sella)
+  'España:Villafranca del Bierzo': [ 42.6010,  -6.8107],  // El Bierzo, León (Camino de Santiago)
   'España:Roncesvalles': [ 43.0092,   -1.3194],  // historic pass and monastery
   'España:San Fermin':   [ 42.8166,   -1.6434],  // San Fermín festival (Pamplona)
   'España:Sanguesa':     [ 42.5700,   -1.2817],  // town, eastern Navarra
@@ -430,7 +469,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Urederra':     [ 42.7282,   -2.0843],  // Nacedero del Urederra natural park, Navarra
   'España:Rio Urederra': [ 42.7282,   -2.0843],  // alternate name for Urederra
   'España:Numancia':     [ 41.8156,   -2.4394],  // archaeological site near Soria
-  'España:Pamplona':     [ 42.8733,   -1.5911],  // pinned at Olloki (Iza valley)
+  'España:Pamplona':     [ 42.8125,   -1.6458],  // Pamplona city centre (Plaza del Castillo)
   'España:Panticosa':    [ 42.7333,   -0.2833],  // ski resort, Huesca Pyrenees
   'España:Panticosa_Pedro': [42.7333,  -0.2833],
   'España:Pasaia':       [ 43.3256,   -1.9225],  // Pasaia port, near San Sebastián
@@ -438,6 +477,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'España:Peñiscola':    [ 40.3620,    0.4010],  // Peñíscola (accented key)
   'España:Sabinaningo':  [ 42.5219,   -0.3644],  // Sabiñánigo, Huesca
   'España:Salamanca':    [ 40.9701,   -5.6635],
+  'España:Santiago de Compostela': [ 42.8782,  -8.5448],  // cathedral city, Galicia
   'España:San Sebastian': [43.3183,   -1.9812],
   'España:Santander':    [ 43.4628,   -3.8099],
   'España:Segovia':      [ 40.9429,   -4.1088],
@@ -470,7 +510,11 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Francia:Nice':        [ 43.7102,    7.2620],
   'Francia:París':       [ 48.8566,    2.3522],
   'Francia:Paris':       [ 48.8566,    2.3522],
+  'Francia:Arette Pierre St Martin': [ 43.060,   -0.757],  // Arette / Pierre Saint-Martin ski area, Pyrenees
   'Francia:Perpignan':   [ 42.6887,    2.8948],
+  'Francia:Poitiers':    [ 46.5802,    0.3404],  // Poitiers, Vienne
+  'Francia:Saintes in Charente-Maritime': [ 45.7454,  -0.6333],  // Saintes, Charente-Maritime
+  'Francia:Toulouse':    [ 43.6047,    1.4442],  // OSM node — Toulouse city centre
   'Francia:Saint Jean Pied Du Port': [43.1628, -1.2371], // start of Camino Frances
   'Francia:San Juan de Luz': [43.3895,  -1.6613], // Saint-Jean-de-Luz
   'Francia:Sare':        [ 43.3105,   -1.5817],  // small Basque village near Spanish border
@@ -543,6 +587,8 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   "Noruega:Daniel's":    [ 63.4305,   10.3951],  // Trondheim (folder named after person)
 
   // ── Paises Balticos (Baltic + Nordic countries, mixed in one folder) ──
+  'Estonia:':            [ 59.4370,   24.7536],  // Tallinn (capital fallback)
+  'Estonia:Tallin':      [ 59.4370,   24.7536],  // Tallinn city centre
   'Paises Balticos:':    [ 59.4370,   24.7536],  // Tallinn (fallback)
   'Paises Balticos:Helsinki': [60.1699, 24.9384], // Helsinki, Finland
   'Paises Balticos:Tallin':   [59.4370, 24.7536], // Tallinn, Estonia
@@ -598,6 +644,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
 
   // ── Turquia (Turkey) ──────────────────────────────────────────────────
   'Turquia:':            [ 39.9334,   32.8597],  // Ankara (capital fallback)
+  'Turquia:Ankara':      [ 39.9334,   32.8597],  // OSM node — city centre
   'Turquia:Istanbul':    [ 41.0082,   28.9784],
   'Turquia:Estambul':    [ 41.0082,   28.9784],
 
@@ -681,7 +728,9 @@ export const COUNTRY_NAMES: Record<string, { en: string; es: string }> = {
   'Grecia':          { en: 'Greece',          es: 'Grecia' },
   'Guatemala':       { en: 'Guatemala',       es: 'Guatemala' },
   'Holanda':         { en: 'Netherlands',     es: 'Holanda' },
+  'Finlandia':       { en: 'Finland',          es: 'Finlandia' },
   'Hungria':         { en: 'Hungary',         es: 'Hungría' },
+  'Indonesia':       { en: 'Indonesia',       es: 'Indonesia' },
   'Inglaterra':      { en: 'England',         es: 'Inglaterra' },
   'Irlanda':         { en: 'Ireland',         es: 'Irlanda' },
   'Israel':          { en: 'Israel',          es: 'Israel' },
@@ -690,6 +739,7 @@ export const COUNTRY_NAMES: Record<string, { en: string; es: string }> = {
   'México':          { en: 'Mexico',          es: 'México' },
   'Monaco':          { en: 'Monaco',          es: 'Mónaco' },
   'Noruega':         { en: 'Norway',          es: 'Noruega' },
+  'Estonia':         { en: 'Estonia',          es: 'Estonia' },
   'Paises Balticos': { en: 'Baltic States',   es: 'Países Bálticos' },
   'Perú':            { en: 'Peru',            es: 'Perú' },
   'Polonia':         { en: 'Poland',          es: 'Polonia' },

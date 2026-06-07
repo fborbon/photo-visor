@@ -10,10 +10,16 @@ import time
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote
 
 import boto3
 import exifread
 from PIL import Image, ImageOps
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass
 
 s3             = boto3.client("s3")
 BUCKET         = os.environ["BUCKET_NAME"]
@@ -60,6 +66,39 @@ def extract_exif(data: bytes) -> dict:
                     pass
     except Exception as e:
         print(f"EXIF error: {e}")
+
+    # Fallback: for HEIC/HEIF files use pillow_heif metadata when exifread fails
+    if not result.get("year"):
+        try:
+            from PIL import Image as PILImage
+            with PILImage.open(io.BytesIO(data)) as img:
+                exif_data = img.getexif()
+                # DateTimeOriginal = tag 36867, DateTime = 306
+                for tag_id in (36867, 36868, 306):
+                    raw = exif_data.get(tag_id)
+                    if raw:
+                        d = datetime.strptime(str(raw), "%Y:%m:%d %H:%M:%S")
+                        result["dt"]    = d.isoformat()
+                        result["year"]  = d.year
+                        result["month"] = d.month
+                        result["day"]   = d.day
+                        break
+                # GPS IFD = tag 34853
+                gps_ifd = exif_data.get_ifd(34853)
+                if gps_ifd:
+                    lat_vals = gps_ifd.get(2); lat_ref = gps_ifd.get(1, "N")
+                    lng_vals = gps_ifd.get(4); lng_ref = gps_ifd.get(3, "E")
+                    if lat_vals and lng_vals:
+                        def _dms(vals):
+                            return float(vals[0]) + float(vals[1])/60 + float(vals[2])/3600
+                        lat = _dms(lat_vals) * (-1 if lat_ref == "S" else 1)
+                        lng = _dms(lng_vals) * (-1 if lng_ref == "W" else 1)
+                        if lat and lng and not (lat == 0.0 and lng == 0.0):
+                            result["lat"] = round(lat, 6)
+                            result["lng"] = round(lng, 6)
+        except Exception:
+            pass
+
     return result
 
 _FN_PATTERNS = [
@@ -146,6 +185,48 @@ def _write_json(key: str, data, cache_control: str = "max-age=3600"):
 def _loc_key(country: str | None, city: str | None) -> str:
     return re.sub(r"[^\w\-]", "_", f"{country or 'Unknown'}_{city or 'Unknown'}")
 
+def _path_seg_slug(path: str) -> str:
+    return re.sub(r"[^\w\-/]", "_", path)
+
+def _update_path_tags_and_general(album_path: str, hash_str: str, photo_entry: dict):
+    """Update index/path_tags.json and index/general/*.json for a Camera/ album upload."""
+    inner = album_path[len("Camera/"):]
+    parts = inner.split("/")
+
+    new_entries = [
+        {"display": "Camera/" + "/".join(parts[:d]), "s3": _path_seg_slug("/".join(parts[:d]))}
+        for d in range(1, len(parts) + 1)
+    ]
+
+    # Merge into path_tags.json
+    try:
+        obj = s3.get_object(Bucket=BUCKET, Key="index/path_tags.json")
+        path_tags = json.loads(obj["Body"].read())
+        if not isinstance(path_tags, list):
+            path_tags = []
+    except Exception:
+        path_tags = []
+    existing = {e["display"] for e in path_tags}
+    to_add = [e for e in new_entries if e["display"] not in existing]
+    if to_add:
+        _write_json("index/path_tags.json", path_tags + to_add,
+                    "no-cache, no-store, must-revalidate")
+
+    # Merge into index/general/{folder_key}.json
+    folder_key = _path_seg_slug(inner)
+    gen_key = f"index/general/{folder_key}.json"
+    try:
+        obj = s3.get_object(Bucket=BUCKET, Key=gen_key)
+        gen_data = json.loads(obj["Body"].read())
+        if not isinstance(gen_data, list):
+            gen_data = []
+    except Exception:
+        gen_data = []
+    if not any(p.get("hash") == hash_str for p in gen_data):
+        gen_data.append({**photo_entry, "folder": inner,
+                         "path": "Camera/" + inner + "/_"})
+        _write_json(gen_key, gen_data, "no-cache, no-store, must-revalidate")
+
 # ── Main handler ──────────────────────────────────────────────────────────────
 
 def handler(event, context):
@@ -167,9 +248,12 @@ def _process(key: str):
 
     print(f"Processing {key}")
 
-    # Download
+    # Download (metadata included in GetObject response)
     obj  = s3.get_object(Bucket=BUCKET, Key=key)
     data = obj["Body"].read()
+    album_path_raw = obj.get("Metadata", {}).get("album-path")
+    album_path = unquote(album_path_raw) if album_path_raw else None
+    album_inner = album_path[len("Camera/"):] if album_path and album_path.startswith("Camera/") else None
 
     # Extract metadata
     meta = extract_exif(data)
@@ -204,7 +288,8 @@ def _process(key: str):
         "lng":     lng,
         "country": country,
         "city":    city,
-        "folder":  None,
+        "folder":  album_inner,
+        "path":    ("Camera/" + album_inner + "/" + filename) if album_inner else None,
         "w":       None,
         "h":       None,
     }
@@ -250,4 +335,11 @@ def _process(key: str):
             summary["locations"] = locs
         _write_json("index/summary.json", summary)
 
-    print(f"Done: {key} → year={year} city={city} country={country}")
+    # Update path tree and general album index if uploaded via phone sync with a Camera/ force path
+    if album_path and album_path.startswith("Camera/"):
+        try:
+            _update_path_tags_and_general(album_path, hash_str, photo_entry)
+        except Exception as e:
+            print(f"path_tags update error: {e}")
+
+    print(f"Done: {key} → year={year} city={city} country={country} album={album_path}")

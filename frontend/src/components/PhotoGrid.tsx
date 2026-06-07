@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { PhotoEntry } from '../types';
+import { useNav, PendingNav } from '../context/NavContext';
 import { usePrivacy }      from '../context/PrivacyContext';
 import { useTags }         from '../context/TagsContext';
 import { useTrash }        from '../context/TrashContext';
@@ -12,11 +13,17 @@ import AddTagModal         from './AddTagModal';
 import AddCommentModal     from './AddCommentModal';
 import config from '../config';
 
+/** Which cross-tab nav icons to show on each thumbnail. */
+export type NavMode = 'map' | 'timeline' | 'path' | 'tags' | 'latest' | 'slots';
+
 interface Props {
   photos:         PhotoEntry[];
   albumKey?:      string;
   title?:         string;
-  placeFallback?: string;  // shown when photo has no valid city/country
+  placeFallback?: string;
+  // Cross-tab navigation
+  navMode?:       NavMode;    // which tab this grid lives in (controls which icons appear)
+  navTagName?:    string;     // Map: full sysTag name (e.g. "España/Pamplona/Concierto Malu")
 }
 
 interface MenuState { x: number; y: number; forSelection: boolean; singlePhoto: PhotoEntry | null; }
@@ -58,23 +65,31 @@ function extractDescription(folder: string | undefined | null,
                              city:   string | undefined | null,
                              country: string | undefined | null): string | null {
   if (!folder) return null;
-  const segs = folder.split('/');
+  const segs = folder.split('/').filter(s => s.length > 0);
+  if (segs.length === 0) return null;
+
   // Try city first, then country as the geographic anchor
   const geoAnchor = (city && isValidPlace(city) ? city : null)
                  ?? (country && isValidPlace(country) ? country : null);
-  if (!geoAnchor) return null;
-  const norm = (s: string) => s.toLowerCase().replace(/_/g, ' ').trim();
-  const anchorNorm = norm(geoAnchor);
-  let splitIdx = -1;
-  for (let i = 0; i < segs.length; i++) {
-    const sn = norm(segs[i]);
-    if (sn === anchorNorm || sn.startsWith(anchorNorm) || anchorNorm.startsWith(sn)) {
-      splitIdx = i;
+  if (geoAnchor) {
+    const norm = (s: string) => s.toLowerCase().replace(/_/g, ' ').trim();
+    const anchorNorm = norm(geoAnchor);
+    let splitIdx = -1;
+    for (let i = 0; i < segs.length; i++) {
+      const sn = norm(segs[i]);
+      if (sn === anchorNorm || sn.startsWith(anchorNorm) || anchorNorm.startsWith(sn)) {
+        splitIdx = i;
+      }
+    }
+    if (splitIdx !== -1) {
+      const descSegs = segs.slice(splitIdx + 1);
+      if (descSegs.length > 0) return descSegs.join(' / ');
     }
   }
-  if (splitIdx === -1) return null;
-  const descSegs = segs.slice(splitIdx + 1).filter(s => s.length > 0);
-  return descSegs.length > 0 ? descSegs.join(' / ') : null;
+
+  // Fallback: GPS city not found in path — use last segment as the album name.
+  // This ensures Row 1 always appears regardless of geocoding variation.
+  return segs[segs.length - 1];
 }
 
 function shortModel(model: string): string {
@@ -83,7 +98,7 @@ function shortModel(model: string): string {
 
 type SortOrder = 'default' | 'oldest' | 'newest';
 
-export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' }: Props) {
+export default function PhotoGrid({ photos, albumKey, title, placeFallback = '', navMode, navTagName }: Props) {
   const [modalIdx,     setModalIdx]     = useState<number | null>(null);
   const [selection,    setSelection]    = useState<Set<number>>(new Set());
   const lastClickedRef                  = useRef<number | null>(null);
@@ -95,6 +110,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
   const [commentPhoto, setCommentPhoto] = useState<PhotoEntry | null>(null);
   const [sortOrder,    setSortOrder]    = useState<SortOrder>('oldest');
 
+  const { navigate } = useNav();
   const { isOwner, isPhotoPrivate, isAlbumPrivate, togglePhoto } = usePrivacy();
   const { addPhotoToTag, getComment, setComment, tags, sharedTags, systemTagIndex } = useTags();
   const { trashPhotos, isTrashed } = useTrash();
@@ -251,7 +267,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
   return (
     <div className="photo-grid-wrap">
       <div className="grid-header">
-        {title && <h3 className="grid-title">{title}</h3>}
+        {title && <h3 className="grid-title">{title} <span className="grid-count">· {photos.length}</span></h3>}
         <div className="grid-sort-btns">
           <button
             className={'grid-sort-btn' + (sortOrder === 'oldest' ? ' active' : '')}
@@ -307,9 +323,47 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
           const comment     = getComment(p.hash);
           const isSelected  = selection.has(i);
 
+          // ── Cross-tab nav icons ─────────────────────────────────
+          const goTimeline = navMode !== 'timeline' ? () => {
+            const dt = p.dt ? new Date(p.dt) : null;
+            navigate('timeline', {
+              hash: p.hash,
+              year:  dt?.getFullYear(),
+              month: dt ? dt.getMonth() + 1 : undefined,
+            });
+          } : null;
+
+          const goMap = navMode !== 'map' ? () => {
+            // Find the exact system-tag name by checking which tag name is a substring
+            // of the photo path — same logic the debug button already uses.
+            const derivedTag = Object.keys(systemTagIndex.tags).find(name =>
+              p.path?.includes(name) || p.folder?.includes(name)
+            );
+            navigate('map', {
+              hash:       p.hash,
+              tagName:    derivedTag ?? navTagName,
+              mapCountry: p.country ?? undefined,
+              mapCity:    p.city    ?? undefined,
+            });
+          } : null;
+
+          const goPath = navMode !== 'path' ? () => {
+            navigate('tags', {
+              hash:       p.hash,
+              // photo.path is the full relative disk path (e.g. "Camera/Europa/...")
+              // Derive folder by stripping the filename — this matches path_tags.json display keys.
+              folderPath: p.path
+                ? p.path.split('/').slice(0, -1).join('/')
+                : p.folder
+                  ? (p.folder.startsWith('Camera/') ? p.folder : 'Camera/' + p.folder)
+                  : undefined,
+            });
+          } : null;
+
           return (
             <div
               key={p.hash}
+              data-photo-hash={p.hash}
               className={'thumb-cell' + (isSelected ? ' selected' : '')}
               onContextMenu={Capacitor.isNativePlatform() ? undefined : e => handleContextMenu(e, i)}
               onTouchStart={Capacitor.isNativePlatform() ? handleTouchStart(i) : undefined}
@@ -348,6 +402,21 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '' 
 
                 {locked && <div className="thumb-lock-overlay">🔒</div>}
               </button>
+
+              {/* Cross-tab navigation icons — top-right corner, shown on hover */}
+              {navMode && (goTimeline || goMap || goPath) && (
+                <div className="thumb-nav-icons" onClick={e => e.stopPropagation()}>
+                  {goTimeline && (
+                    <button className="thumb-nav-btn" title="Go to Timeline" onClick={goTimeline}>📅</button>
+                  )}
+                  {goMap && (
+                    <button className="thumb-nav-btn" title="Go to Map pin" onClick={goMap}>📍</button>
+                  )}
+                  {goPath && (
+                    <button className="thumb-nav-btn" title="Go to folder" onClick={goPath}>📂</button>
+                  )}
+                </div>
+              )}
 
               {isOwner && (
                 <div className="thumb-bottom-left">

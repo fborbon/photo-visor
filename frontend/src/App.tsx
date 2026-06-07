@@ -11,10 +11,11 @@ import { TrashProvider }               from './context/TrashContext';
 import { AnalyticsProvider, useAnalytics } from './context/AnalyticsContext';
 import { useIndex }     from './hooks/useIndex';
 import { useSync }      from './hooks/useSync';
+import { NavProvider }  from './context/NavContext';
+import { FavoritesProvider } from './context/FavoritesContext';
 import MapView          from './components/MapView';
 import TimelineView     from './components/TimelineView';
 import TagsView         from './components/TagsView';
-import UploadView       from './components/UploadView';
 import LatestView       from './components/LatestView';
 import SlotMachineView  from './components/SlotMachineView';
 import StatisticsView   from './components/StatisticsView';
@@ -102,11 +103,6 @@ function AppInner({ signOut, email }: InnerProps) {
             📊 {tr.tabStats}
           </button>
           {isOwner && (
-            <button className={'tab-btn' + (tab === 'upload' ? ' active' : '')} onClick={() => setTab('upload')}>
-              ⬆️ {tr.tabUpload}
-            </button>
-          )}
-          {isOwner && (
             <button
               className={'tab-btn' + (tab === 'sync' ? ' active' : '') + (syncStatus.phase === 'syncing' || syncStatus.phase === 'enumerating' ? ' tab-btn--syncing' : '')}
               onClick={() => setTab('sync')}
@@ -136,6 +132,8 @@ function AppInner({ signOut, email }: InnerProps) {
       </header>
 
       <main className="main-content">
+        <NavProvider setTab={setTab}>
+        <FavoritesProvider>
         <TagsProvider>
           <TrashProvider>
             {tab === 'map'      && <MapView displayName={displayName ? `${welcomeWord} ${displayName}!` : undefined} />}
@@ -144,27 +142,23 @@ function AppInner({ signOut, email }: InnerProps) {
             {tab === 'latest'   && <LatestView />}
             {tab === 'slots'    && <SlotMachineView />}
             {tab === 'stats'    && <StatisticsView onNavigate={(year, month) => { setTimelineNav({ year, month }); setTab('timeline'); }} />}
-            {tab === 'upload'   && <UploadView />}
-            {tab === 'trash'    && <TrashView />}
+{tab === 'trash'    && <TrashView />}
             {tab === 'usage'    && isOwner && <UsageView />}
             {tab === 'sync'     && (
               <SyncView
                 status={syncStatus}
                 lastSync={lastSync}
-                autoSync={autoSync}
-                setAutoSync={setAutoSync}
                 onSyncNow={sync}
                 onSyncDesktop={syncDesktop}
                 onStopSync={stopSync}
-                fixing={fixing}
-                fixResult={fixResult}
-                onMarkNonCameraPrivate={markNonCameraPrivate}
                 onLoadAlbums={loadAlbums}
                 isNative={Capacitor.isNativePlatform()}
               />
             )}
           </TrashProvider>
         </TagsProvider>
+        </FavoritesProvider>
+        </NavProvider>
       </main>
 
       {summary?.generated && (

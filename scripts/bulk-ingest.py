@@ -525,34 +525,52 @@ def _system_tag(rel_path: str) -> Optional[str]:
             break
 
     # .Amigos — new structure (two formats):
-    #   Country-first:  .Amigos/{Country}/{City}/...           → {Country}/{City}
+    #   Country-first:  .Amigos/{Country}/{City}/...           → {Country}/{City} - Amigos
     #   Person-first:   .Amigos/{Person}/{Country}/{City}/...  → {Country}/{City} - {Person}
     if parts[0] == ".Amigos":
         if len(parts) < 3:
             return None
         level1 = parts[1]
         if COUNTRY_NORMALIZE.get(level1) is not None:
-            # Country-first
+            # Country-first: append " - Amigos" to distinguish from Camera/ pins at the same city
             city = parts[2] if len(parts) > 2 else None
             if not city:
                 return None
-            return f"{level1}/{city}"
+            return f"{level1}/{city} - Amigos"
         else:
-            # Person-first
+            # Person-first: .Amigos/{Person}/{Country}/{City}[/{Subfolder}]/...
+            # Include subfolder as a third tag segment so each sub-album gets
+            # its own index file (and TOC entry), while all share the same
+            # Country:City location bucket → same map pin.
             if len(parts) < 4:
                 return None
-            person   = level1
+            person     = level1
             country_es = parts[2]
-            city     = parts[3] if len(parts) > 3 else None
+            city       = parts[3] if len(parts) > 3 else None
             if not city:
                 return f"{country_es}/{person}"
+            # Include the next path level so each sub-album gets its own index
+            # entry and TOC item.  Exclude "dummy.jpg" (injected by unique_pin
+            # collapse) and plain filenames (no extension in a real subfolder).
+            raw_sub = parts[4] if len(parts) > 4 else None
+            subfolder = (raw_sub
+                         if raw_sub and '.' not in raw_sub
+                         else None)
+            if subfolder:
+                return f"{country_es}/{city}/{subfolder} - {person}"
             return f"{country_es}/{city} - {person}"
 
-    # .Whatsapp — new geographic hierarchy: .Whatsapp/{Country}/{City}/...
+    # .Whatsapp — geographic hierarchy: .Whatsapp/{Country}/{City}[/{Subfolder}]/...
+    # Include subfolder as a third segment so named subfolders (e.g. Colegio
+    # María Inmaculada) get their own TOC entry in the city pin.
     if parts[0] == ".Whatsapp":
         if len(parts) >= 3:
             country_es = parts[1]
             city       = parts[2]
+            raw_sub    = parts[3] if len(parts) > 3 else None
+            subfolder  = raw_sub if raw_sub and '.' not in raw_sub else None
+            if subfolder:
+                return f"{country_es}/{city}/{subfolder} - Whatsapp"
             return f"{country_es}/{city} - Whatsapp"
         return "Costa Rica/Tibás - Whatsapp"
 
@@ -567,9 +585,10 @@ def _system_tag(rel_path: str) -> Optional[str]:
     else:
         tag_parts = dir_parts
 
-    # Camera/Europa/Visitas/{Trip}/{Country}/{City}/...    → {country_es}/{city}
+    # Camera/Europa/Visitas/{Trip}/{Country}/{City}/...    → {country_es}/{city} - {trip}
     # Camera/Europa/Visitas/{Trip}/{Country} - {City}/... → {country_es}/{city} - {trip}
-    # Camera/Europa/Visitas/{Trip}/{PlainCity}/...         → {country_es}/{city}
+    # Camera/Europa/Visitas/{Trip}/{PlainCity}/...         → {country_es}/{city} - {trip}
+    # Trip suffix distinguishes each Visitas album from the main Camera/{Country}/{City} pin.
     _VISITAS_CITY_COUNTRY = {"Lourdes": "Francia", "Biarritz": "Francia",
                              "Paris": "Francia", "Lyon": "Francia",
                              "Lisboa": "Portugal", "Porto": "Portugal"}
@@ -584,20 +603,26 @@ def _system_tag(rel_path: str) -> Optional[str]:
             # subfolder is a country name → next level is the city
             country_es = subfolder
             city = tag_parts[3] if len(tag_parts) >= 4 else subfolder
-            return f"{country_es}/{city}"
+            return f"{country_es}/{city} - {trip}"
         else:
             country_es = _VISITAS_CITY_COUNTRY.get(subfolder, "España")
-            return f"{country_es}/{subfolder}"
+            return f"{country_es}/{subfolder} - {trip}"
 
-    # Camera/Latinoamerica/Costa Rica/{geo_cat}/{city}/...  → "Costa Rica/{city}"
-    # Always use the deepest available sub-city (tag_parts[3] if present).
-    # unique_pin.txt at city level (e.g. Turrialba) caps before reaching tag_parts[3],
-    # so capping happens naturally without a separate flag check.
+    # Camera/Latinoamerica/Costa Rica/{geo_cat}/{city}[/{subfolder}]/...
+    # Paseos en bicicleta: depth-4 subfolder is a cycling route *within* the
+    # city → keep as sub-album of the city pin ("Costa Rica/{city}/{route}").
+    # All other geo cats (Turismo CR, Paseos en automovil, Voluntariados):
+    # depth-4 subfolder is a separate destination → promote to its own city pin.
     _CR_GEO_CATS = {"Turismo CR", "Voluntariados",
                     "Paseos en automovil", "Paseos en bicicleta"}
     if (len(tag_parts) >= 3 and tag_parts[0] == "Costa Rica"
             and tag_parts[1] in _CR_GEO_CATS):
-        city = tag_parts[3] if len(tag_parts) >= 4 else tag_parts[2]
+        city = tag_parts[2]
+        if len(tag_parts) >= 4:
+            if tag_parts[1] == "Paseos en bicicleta":
+                return f"Costa Rica/{city}/{tag_parts[3]}"   # route sub-album
+            else:
+                return f"Costa Rica/{tag_parts[3]}"           # separate town pin
         return f"Costa Rica/{city}"
     # Costa Rica non-geo categories → no sys tag
     if (len(tag_parts) >= 2 and tag_parts[0] == "Costa Rica"
@@ -615,43 +640,50 @@ def _system_tag(rel_path: str) -> Optional[str]:
             return tag_parts[0]
 
     # España: when tag_parts[1] is a region container (Navarra, Cataluña, …)
-    # skip it and use tag_parts[2] as the city.
-    # When tag_parts[1] is already the city (Guernika, Bilbao, Sevilla, …)
-    # use it directly so "España/Guernika/Diciembre 2013" → "España/Guernika".
+    # skip it and keep the city + any deeper album path as independent segments.
+    # Non-region cities (Guernika, Bilbao, Sevilla, …) fall through to the
+    # general handler so each subfolder becomes its own pin (no truncation).
     _ESPAÑA_REGION_CONTAINERS_TAG = {"Navarra", "Cataluña", "Asturias", "Andalucia"}
     if len(tag_parts) >= 3 and tag_parts[0] == "España":
         if tag_parts[1] in _ESPAÑA_REGION_CONTAINERS_TAG:
-            return f"España/{tag_parts[2]}"   # skip region, promote city
-        else:
-            return f"España/{tag_parts[1]}"   # tag_parts[1] is already the city
+            # Skip the region level; preserve city + deeper path for independent pins
+            city_and_below = "/".join(tag_parts[2:])
+            return f"España/{city_and_below}"
+        # else: non-region city → fall through to general handler
 
-    # USA: depth-1 is either the city (Boulder, Boston…) or a trip/state
-    # folder.  Use depth-1 when it is a real city name; only fall through to
-    # depth-2 when depth-1 is a trip descriptor (starts with "Viaje"/"Rosibel"…)
-    # or a US state name (South Carolina → Greenville at depth-2).
+    # USA: depth-1 is either the city (Boulder, Boston…), a US state, or a trip.
+    # • Trip folder  (Viaje …)      → "USA/{city} - {trip}"  (preserves trip for distinct pin)
+    # • State folder (South Carolina) → "USA/{city}"          (state is just a container)
+    # • City folder  (Boulder, Boston) → "USA/{city}"
     _US_STATE_FOLDERS = {"South Carolina", "North Carolina", "Rhode Island",
                          "New Mexico", "New York State", "West Virginia"}
     if len(tag_parts) >= 3 and tag_parts[0] == "USA":
         city1 = _extract_city_token(tag_parts[1])
-        if city1 is None or city1 in _US_STATE_FOLDERS:
-            # Depth-1 is a trip folder or US state → city lives at depth-2
+        if city1 is None:
+            # Depth-1 is a trip folder → append trip so the album is distinct from
+            # photos taken in the same city outside the trip context.
             city = _extract_city_token(tag_parts[2]) or tag_parts[2]
+            return f"USA/{city} - {tag_parts[1]}"
+        elif city1 in _US_STATE_FOLDERS:
+            # Depth-1 is a US state container → city at depth-2, no trip suffix
+            city = _extract_city_token(tag_parts[2]) or tag_parts[2]
+            return f"USA/{city}"
         else:
             # Depth-1 is the actual city (Boulder, Boston, Chicago…)
-            city = city1
-        return f"USA/{city}"
+            return f"USA/{city1}"
 
     # Strip person-subfolder level (e.g. "Aryan's pictures") so city pin is correct.
     # Camera/Europa/Italia/Roma/{person's pictures}/ → "Italia/Roma"
     if len(tag_parts) >= 3 and tag_parts[2].lower().endswith(" pictures"):
         return "/".join(tag_parts[:2])
 
-    # Collapse trip-folder level when tag_parts[1] is a trip/visit descriptor.
-    # Two forms are recognised:
+    # Trip-folder level: tag_parts[1] is a trip/visit descriptor and tag_parts[2] is
+    # the city/place within it.  Append the trip name so the album is distinct from
+    # photos taken in the same city outside this trip context.
+    # Two descriptor forms:
     #   "{City} - {Visit description}" (e.g. "Cascais - Visita agosto 2008")
     #   "{Visit word} {date/desc}"     (e.g. "Visita agosto 2008", "Viaje Europa 2008")
-    # Real place sub-folders (Tavira, Lisboa, Belem…) get promoted to city-level tags.
-    # Organisational sub-folders (Calibration, Nokia camera, Parte N…) collapse to parent.
+    # Organisational sub-folders (Parte N, Calibration…) collapse to the trip tag.
     _TRIP_FIRST_WORDS = {"visita", "viaje", "viagem", "tour", "semana"}
     _is_trip_folder = (
         " - " in tag_parts[1] or
@@ -666,18 +698,16 @@ def _system_tag(rel_path: str) -> Optional[str]:
                 or sub_lower in _NON_PLACE_SUBFOLDERS
                 or sub_lower.startswith('fotos de ')):
             return "/".join(tag_parts[:2])
-        return f"{tag_parts[0]}/{sub}"
+        return f"{tag_parts[0]}/{sub} - {tag_parts[1]}"
 
     if tag_parts:
         # Normalize folder-spelling variants to the canonical city name
         _CITY_FOLDER_NORMALIZE = {'Bruges': 'Brugge'}
         normalized = [tag_parts[0]] + [_CITY_FOLDER_NORMALIZE.get(p, p) for p in tag_parts[1:]]
-        tag_str = "/".join(normalized)
-        # unique_pin.txt: all sibling subfolders share one tag → one pin.
-        # Without it, each album/subfolder keeps its own tag (and own pin).
-        if _unique_pin_depth and len(normalized) > 2:
-            tag_str = "/".join(normalized[:2])
-        return tag_str
+        # unique_pin.txt collapse has already replaced parts with the pin-folder
+        # path + "dummy.jpg", so tag_parts/normalized already reflect the correct
+        # depth.  No further truncation is needed or correct here.
+        return "/".join(normalized)
     return None
 
 
@@ -1215,6 +1245,31 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
             "video_proxy": row["video_proxy_key"],
         })
 
+    # Non-Camera photos with gf=NULL (e.g. .Amigos geo records) also need general
+    # index files, using their current_path directory as the folder key — same key
+    # used by path_tags generation so the app can find the file.
+    for row in active:
+        cp = str(row["current_path"] or "")
+        if row["general_folder"] or not cp or "/" not in cp or cp.startswith("Camera/"):
+            continue
+        dir_path = str(Path(cp).parent)
+        folder_key = re.sub(r"[^\w\-/]", "_", dir_path)
+        by_folder.setdefault(folder_key, []).append({
+            "hash":    row["hash"],
+            "s3_key":  row["s3_key"],
+            "thumb":   row["thumb_key"],
+            "dt":      row["datetime_taken"],
+            "lat":     row["lat"],
+            "lng":     row["lng"],
+            "country": row["country"],
+            "city":    row["city"],
+            "folder":  dir_path,
+            "path":    row["current_path"],
+            "w":       row["width"],
+            "h":       row["height"],
+            "video_proxy": row["video_proxy_key"],
+        })
+
     for folder_key, photos in by_folder.items():
         photos.sort(key=lambda p: p["dt"] or "")
         # Preserve sub-folder path in the key name
@@ -1378,21 +1433,33 @@ def build_and_upload_index(db: sqlite3.Connection, s3, dry_run: bool):
 
     # ── index/path_tags.json + index/folder_paths.json ────────────────────────
     # path_tags: [{display, s3}] for every folder that has indexed photos.
-    # Camera/ photos get "Camera/" prepended to display; s3 key = general_folder sanitized.
+    # Camera/ → "Camera/" + general_folder; all others → directory of current_path.
+    # Using current_path for non-Camera ensures .Amigos folders with geo-type
+    # classification (general_folder=NULL) still appear in the tree.
     # Includes all ancestor paths so the tree can be built without intermediate gaps.
     path_tags_map: dict[str, str] = {}   # display → s3_key
     for row in active:
-        gf = row["general_folder"]
-        if not gf:
-            continue
         cp = str(row["current_path"] or "")
+        if not cp or "/" not in cp:
+            continue
         is_camera = cp.startswith("Camera/")
-        gf_parts = gf.split("/")
-        for depth in range(1, len(gf_parts) + 1):
-            ancestor_gf = "/".join(gf_parts[:depth])
-            display = ("Camera/" + ancestor_gf) if is_camera else ancestor_gf
-            s3_key = re.sub(r"[^\w\-/]", "_", ancestor_gf)
-            path_tags_map.setdefault(display, s3_key)
+        if is_camera:
+            gf = row["general_folder"]
+            if not gf:
+                continue
+            parts = gf.split("/")
+            for depth in range(1, len(parts) + 1):
+                ancestor = "/".join(parts[:depth])
+                display = "Camera/" + ancestor
+                s3_key = re.sub(r"[^\w\-/]", "_", ancestor)
+                path_tags_map.setdefault(display, s3_key)
+        else:
+            dir_path = str(Path(cp).parent)
+            dir_parts = dir_path.split("/")
+            for depth in range(1, len(dir_parts) + 1):
+                ancestor = "/".join(dir_parts[:depth])
+                s3_key = re.sub(r"[^\w\-/]", "_", ancestor)
+                path_tags_map.setdefault(ancestor, s3_key)
     path_tags_list = sorted([{"display": k, "s3": v} for k, v in path_tags_map.items()],
                             key=lambda x: x["display"])
     _put_index(s3, "index/path_tags.json", path_tags_list, dry_run)

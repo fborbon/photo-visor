@@ -94,15 +94,36 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 
 /* ── Map side panel ───────────────────────────────────────────────── */
 .map-panel {
-  width: 380px;
+  /* width is set via inline style from React state (default 380px) */
   background: #111;
   border-left: 1px solid #1c1c1c;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+.panel-width-handle {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 20;
+  touch-action: none;
+  user-select: none;
+}
+.panel-width-handle:hover  { background: #FF7A0033; }
+.panel-width-handle:active { background: #FF7A0066; }
+.panel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 .panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: .5rem;
 }
@@ -118,6 +139,101 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .panel-close   { font-size: 1.1rem; color: #888; padding: .2rem .4rem; border-radius: 4px; }
 .panel-close:hover { background: #2a2a2a; color: #fff; }
 .panel-loading { padding: 1rem; color: #888; font-size: .9rem; }
+.panel-toc {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.panel-toc-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #222;
+  flex-shrink: 0;
+}
+.panel-toc-row .panel-toc-item {
+  flex: 1;
+  border-bottom: none;
+}
+.panel-toc-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: .5rem .9rem;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #222;
+  font-size: .82rem;
+  color: #ccc;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+.panel-toc-item:hover:not(.active) { background: #1e1e1e; color: #fff; }
+.panel-toc-item.active { color: #FF7A00; font-weight: 600; background: rgba(255,122,0,.10); }
+.toc-item-count { font-size: .75rem; color: #666; font-weight: 400; }
+.panel-toc-item.active .toc-item-count { color: rgba(255,122,0,.65); }
+.panel-v-drag {
+  height: 6px;
+  background: #2a2a2a;
+  cursor: row-resize;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.panel-v-drag:hover { background: #FF7A00; opacity: .6; }
+.panel-nav-bar {
+  display: flex;
+  gap: 4px;
+  padding: 3px 6px;
+  border-bottom: 1px solid #2a2a2a;
+  border-top: 1px solid #2a2a2a;
+  flex-shrink: 0;
+}
+.panel-nav-btn {
+  flex: 1;
+  padding: 3px 8px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #aaa;
+  cursor: pointer;
+  font-size: .85rem;
+}
+.panel-nav-btn:hover { background: #2a2a2a; color: #fff; }
+
+.album-section { margin-bottom: .25rem; }
+.album-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .4rem;
+  font-size: .78rem;
+  font-weight: 600;
+  color: #e0e0e0;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  padding: .35rem .4rem .35rem .65rem;
+  background: #1a1a1a;
+  border-left: 3px solid #FF7A00;
+  border-bottom: 1px solid #2a2a2a;
+  margin-bottom: .25rem;
+}
+.album-section-label { flex: 1; min-width: 0; }
+.album-section-nav   { display: flex; gap: .2rem; flex-shrink: 0; }
+.album-nav-btn {
+  font-size: .75rem;
+  color: #888;
+  padding: .1rem .3rem;
+  border-radius: 3px;
+  line-height: 1;
+}
+.album-nav-btn:hover { background: #2a2a2a; color: #FF7A00; }
 
 /* ── Timeline layout ─────────────────────────────────────────────── */
 .timeline-layout { display: flex; width: 100%; height: 100%; }
@@ -226,6 +342,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   gap: .4rem;
 }
 .grid-title { font-size: .9rem; color: #888; font-weight: 500; }
+.grid-count { font-size: .82rem; color: #666; font-weight: 400; }
 .grid-sort-btns { display: flex; gap: .35rem; }
 .grid-sort-btn {
   font-size: .75rem;
@@ -255,6 +372,36 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* Cross-tab navigation icons — top-right corner, appear on hover */
+.thumb-nav-icons {
+  position: absolute;
+  top: 4px; right: 4px;
+  display: flex; gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 20;
+  transition: opacity .15s;
+}
+.thumb-cell:hover .thumb-nav-icons { opacity: 1; pointer-events: auto; }
+/* Always show nav icons inside slot reels (no hover on mobile) */
+.slot-reel .thumb-nav-icons { opacity: 1; pointer-events: auto; }
+.thumb-nav-btn {
+  font-size: .75rem;
+  width: 22px; height: 22px;
+  border-radius: 4px;
+  background: rgba(0,0,0,.65);
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+}
+.thumb-nav-btn:hover { background: #FF7A00; }
+
+/* Blink highlight when a photo is navigated to from another tab (5 s total) */
+@keyframes photo-nav-flash {
+  0%, 100% { outline: 3px solid #FF7A00; outline-offset: 3px; box-shadow: 0 0 10px #FF7A00aa; }
+  50%       { outline: none; box-shadow: none; }
+}
+.photo-nav-highlight { animation: photo-nav-flash .5s ease-in-out 10; }
 
 .thumb-btn {
   display: block;
@@ -463,6 +610,19 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .modal-prev { left: 1rem; }
 .modal-next { right: 1rem; }
 .modal-prev:hover, .modal-next:hover { background: #ff0084; color: #fff; }
+
+.modal-mute-btn {
+  position: fixed;
+  bottom: 5rem;
+  right: 1.2rem;
+  font-size: 1.3rem;
+  background: #1118;
+  border-radius: 50%;
+  width: 2.4rem; height: 2.4rem;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9001;
+}
+.modal-mute-btn:hover { background: #333; }
 
 /* ── Amplify auth overrides (dark theme) ─────────────────────────── */
 [data-amplify-authenticator] {
@@ -703,6 +863,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 }
 .path-tree-row:hover                  { background: rgba(255,255,255,.06); }
 .path-tree-row.active                 { background: rgba(255,0,132,.18); }
+.path-tree-row.highlighted            { background: rgba(255,122,0,.35) !important; }
 
 .path-tree-arrow {
   flex-shrink: 0;
@@ -885,6 +1046,19 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   margin-bottom: 1rem;
 }
 .tags-selected-name { font-size: 1.1rem; font-weight: 600; }
+.path-copy-btn {
+  background: none;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: .78rem;
+  padding: .3rem .7rem;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.path-copy-btn:hover { border-color: #d4a843; color: #d4a843; }
+
 .tag-delete-btn {
   font-size: .78rem;
   color: #f87171;
@@ -1249,6 +1423,14 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   max-width: 860px;
 }
 
+.slots-header-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  justify-content: space-between;
+}
+
 .slots-title {
   font-size: 1.3rem;
   font-weight: 700;
@@ -1326,8 +1508,6 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 }
 
 /* Lever button */
-.slots-lever-row { display: flex; justify-content: center; }
-
 .slots-lever {
   background: linear-gradient(180deg, #e53e3e 0%, #9b1c1c 60%, #7f1d1d 100%);
   color: #fff;
@@ -1526,7 +1706,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   .slots-machine { padding: 1.2rem 1rem 1rem; gap: 1rem; }
   .slots-title   { font-size: 1rem; }
   .slots-grid    { grid-template-columns: repeat(2, 1fr); gap: 6px; }
-  .slots-lever   { font-size: 1rem; padding: .75rem 2.5rem; }
+  .slots-lever   { font-size: .9rem; padding: .55rem 1.4rem; }
 
   /* Latest: compact pills */
   .latest-subtabs { padding: .5rem .6rem; gap: .35rem; }
@@ -1559,6 +1739,8 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 
 /* ── Sync tab ─────────────────────────────────────────────────────── */
 .sync-view {
+  flex: 1;
+  overflow-y: auto;
   max-width: 520px;
   margin: 0 auto;
   padding: 1.5rem 1rem;
@@ -1731,6 +1913,17 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 }
 .sync-album-check input[type="checkbox"] { accent-color: #ff0084; cursor: pointer; width: 1rem; height: 1rem; flex-shrink: 0; }
 .sync-album-name { font-weight: 600; }
+
+.sync-album-create-folder {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  font-size: .8rem;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: .1rem 0;
+}
+.sync-album-create-folder input[type="checkbox"] { accent-color: #d4a843; cursor: pointer; width: .85rem; height: .85rem; }
 
 .sync-album-private-check {
   display: flex;
@@ -1993,3 +2186,62 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .usage-top-list li { display: flex; justify-content: space-between; gap: .5rem; padding: .5rem .75rem; background: #111; border-radius: 8px; align-items: baseline; }
 .usage-album-title { font-size: .87rem; color: #ccc; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .usage-album-count { font-size: .8rem; color: #888; flex-shrink: 0; }
+
+/* ── Favorites: star button ─────────────────────────────────────────────── */
+.fav-star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 5px;
+  font-size: .82rem;
+  color: #666;
+  flex-shrink: 0;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity .12s, color .12s;
+  user-select: none;
+}
+.fav-star:hover          { color: #ffd700; opacity: 1; }
+.fav-star--on            { color: #ffd700; opacity: 1 !important; }
+
+/* Show star on path-tree row hover; always show when starred */
+.path-tree-row:hover .fav-star { opacity: 0.6; }
+.path-tree-row .fav-star--on   { opacity: 1; }
+
+/* Show star on panel-toc row hover; always show when starred */
+.panel-toc-row:hover .fav-star { opacity: 0.6; }
+.panel-toc-row .fav-star--on   { opacity: 1; }
+
+/* ── Favorites: row in rail ──────────────────────────────────────────────── */
+.fav-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px;
+}
+.fav-row .tag-rail-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Favorites: single-album header in map panel ────────────────────────── */
+.album-section-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px 3px;
+  gap: 4px;
+}
+.album-section-title {
+  font-size: .78rem;
+  font-weight: 600;
+  color: #aaa;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.album-section-hdr .fav-star { opacity: 0.5; }
+.album-section-hdr:hover .fav-star { opacity: 1; }
+.album-section-count { font-size: .72rem; color: #777; font-weight: 400; }

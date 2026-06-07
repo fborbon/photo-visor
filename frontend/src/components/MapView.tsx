@@ -1,10 +1,13 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { useTags }    from '../context/TagsContext';
 import { useLang }    from '../context/LangContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { PhotoEntry } from '../types';
+import { useNav, scrollToHash } from '../context/NavContext';
+import { useFavorites } from '../context/FavoritesContext';
 import PhotoGrid from './PhotoGrid';
 import config from '../config';
 import {
@@ -79,87 +82,223 @@ function MapReadyGuard({ onReady }: { onReady: () => void }) {
   return null;
 }
 
+interface PanelAlbum { slug: string; label: string; tagName: string; }
 interface PanelState {
   title:    string;
-  slugs:    string[];
+  albums:   PanelAlbum[];
   fallback: string;
+}
+interface AlbumSection { label: string; tagName: string; photos: PhotoEntry[]; }
+
+const PANEL_PAGE           = 100;
+const PANEL_LAZY_THRESHOLD = 1000;
+const PANEL_DEFAULT_WIDTH  = 380;
+const VIDEO_EXTS = /\.(mp4|mov|avi|3gp|wmv|mp3|mpg|vob)$/i;
+
+function isVideo(photo: PhotoEntry) {
+  return VIDEO_EXTS.test(photo.s3_key ?? '') || !!photo.video_proxy;
 }
 
 export default function MapView({ displayName }: { displayName?: string }) {
-  const [mapLoaded, setMapLoaded] = useState(false);
-  const [panel, setPanel] = useState<PanelState | null>(null);
-  const [panelPhotos, setPanelPhotos] = useState<PhotoEntry[] | null>(null);
-  const [panelLoading, setPanelLoading] = useState(false);
-  const panelBodyRef = useRef<HTMLDivElement>(null);
+  const [mapLoaded,        setMapLoaded]        = useState(false);
+  const [panel,            setPanel]            = useState<PanelState | null>(null);
+  const [panelSections,    setPanelSections]    = useState<AlbumSection[] | null>(null);
+  const [panelLoading,     setPanelLoading]     = useState(false);
+  const [selectedAlbumIdx, setSelectedAlbumIdx] = useState(0);
+  const [panelWidth,       setPanelWidth]       = useState(PANEL_DEFAULT_WIDTH);
+  const [secVisible,       setSecVisible]       = useState<Map<number, number>>(new Map());
+  const panelBodyRef    = useRef<HTMLDivElement>(null);
+  const panelContentRef = useRef<HTMLDivElement>(null);
+  const widthDragRef    = useRef<{ startX: number; startW: number } | null>(null);
+  const vDragRef        = useRef<{ startY: number; startPx: number } | null>(null);
+  const scrollToEndRef  = useRef(false);
+  const [tocHeight, setTocHeight] = useState(160); // px height of the TOC list
 
-  // Load all slugs for the active panel in parallel and merge results
+  function onWidthDragStart(e: React.PointerEvent) {
+    widthDragRef.current = { startX: e.clientX, startW: panelWidth };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+  function onWidthDragMove(e: React.PointerEvent) {
+    if (!widthDragRef.current) return;
+    const dx = widthDragRef.current.startX - e.clientX;
+    setPanelWidth(Math.max(280, Math.min(720, widthDragRef.current.startW + dx)));
+  }
+  function onWidthDragEnd() { widthDragRef.current = null; }
+
+  function onVDragStart(e: React.PointerEvent) {
+    vDragRef.current = { startY: e.clientY, startPx: tocHeight };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+  function onVDragMove(e: React.PointerEvent) {
+    if (!vDragRef.current) return;
+    const dy = e.clientY - vDragRef.current.startY;
+    setTocHeight(Math.max(40, Math.min(600, vDragRef.current.startPx + dy)));
+  }
+  function onVDragEnd() { vDragRef.current = null; }
+
+  // Fetch photos for every album in the panel, sort sections by earliest date ascending.
   useEffect(() => {
     panelBodyRef.current?.scrollTo({ top: 0, behavior: 'instant' });
-    if (!panel) { setPanelPhotos(null); setPanelLoading(false); return; }
+    setSecVisible(new Map());
+    setSelectedAlbumIdx(0);
+    if (!panel) { setPanelSections(null); setPanelLoading(false); return; }
     let cancelled = false;
     setPanelLoading(true);
-    setPanelPhotos(null);
+    setPanelSections(null);
     Promise.all(
-      panel.slugs.map(slug =>
-        fetch(config.cloudFrontUrl + '/index/sys/' + slug + '.json')
+      panel.albums.map(album =>
+        fetch(config.cloudFrontUrl + '/index/sys/' + album.slug + '.json')
           .then(r => r.json() as Promise<PhotoEntry[]>)
           .catch(() => [] as PhotoEntry[])
+          .then(photos => ({ label: album.label, tagName: album.tagName, photos }))
       )
-    ).then(arrays => {
-      if (!cancelled) {
-        setPanelPhotos(arrays.flat());
-        setPanelLoading(false);
-      }
+    ).then(sections => {
+      if (cancelled) return;
+      const filled = sections.filter(s => s.photos.length > 0);
+      // Sort sections by earliest photo date ascending
+      filled.sort((a, b) => {
+        const minDt = (s: AlbumSection) =>
+          s.photos.reduce((m, p) => (p.dt && p.dt < m ? p.dt : m), '9999');
+        return minDt(a).localeCompare(minDt(b));
+      });
+      // Within each album: photos first (by date), videos at the end
+      filled.forEach(sec => {
+        sec.photos.sort((a, b) => {
+          const av = isVideo(a), bv = isVideo(b);
+          if (av !== bv) return av ? 1 : -1;
+          return (a.dt ?? '9999').localeCompare(b.dt ?? '9999');
+        });
+      });
+      setPanelSections(filled);
+      setPanelLoading(false);
     });
     return () => { cancelled = true; };
   }, [panel]);
 
-  const { systemTagIndex } = useTags();
-  const { lang, tr } = useLang();
-  const { isOwner } = usePrivacy();
+  // Reset scroll only when the album selection or panel changes (not on secVisible updates).
+  useEffect(() => {
+    panelBodyRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+  }, [panelSections, selectedAlbumIdx]);
 
-  // One marker per sys tag. When multiple tags share the same base coordinate,
-  // spread them in a circle so they appear as distinct pins (not merged).
+  // Lazy-load more photos for the active section as the user scrolls.
+  useEffect(() => {
+    const container = panelBodyRef.current;
+    if (!container || !panelSections) return;
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const total = panelSections[selectedAlbumIdx]?.photos.length ?? 0;
+        setSecVisible(prev => {
+          const cur = prev.get(selectedAlbumIdx) ?? PANEL_PAGE;
+          if (cur >= total) return prev;
+          const next = new Map(prev);
+          next.set(selectedAlbumIdx, Math.min(cur + PANEL_PAGE, total));
+          return next;
+        });
+      });
+    }, { root: container, threshold: 0 });
+    container.querySelectorAll<HTMLElement>('[data-sec-sentinel]').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, [panelSections, secVisible, selectedAlbumIdx]);
+
+  const { pendingNav, clearNav } = useNav();
+  const { systemTagIndex } = useTags();
+  const { lang, tr }       = useLang();
+  const { isOwner }        = usePrivacy();
+  const { isFavorite, toggleFavorite } = useFavorites();
+
+  // One marker per geographic location. All system tags that resolve to the same
+  // country:city key are merged into one pin — the panel lists them as albums.
   const sysTagMarkers = useMemo(() => {
-    type Entry = { lat: number; lng: number; country: string; city: string; slug: string; name: string; count: number; };
-    const byLocation = new Map<string, Entry[]>();
+    type AlbumInfo = { slug: string; label: string; tagName: string; count: number };
+    type LocEntry  = {
+      lat: number; lng: number; country: string; city: string;
+      albums: AlbumInfo[];
+    };
+    const byLocation = new Map<string, LocEntry>();
+
     for (const [name, meta] of Object.entries(systemTagIndex.tags)) {
       if (!isOwner && !meta.public) continue;
       const country = sysTagCountryKey(name);
       const city    = sysTagCityKey(name);
-      // Prefer the manually-curated coordinate table (keyed by folder-path place
-      // names — reliable and verified).  Fall back to the avg GPS computed from
-      // photo EXIF data only for places not yet in the table.
       const coords: [number, number] | null =
         sysTagCoords(country, city) ??
         (meta.lat != null && meta.lng != null ? [meta.lat, meta.lng] : null);
       if (!coords) continue;
       const key = country + ':' + city;
-      if (!byLocation.has(key)) byLocation.set(key, []);
-      byLocation.get(key)!.push({ lat: coords[0], lng: coords[1], country, city, slug: meta.slug, name, count: meta.count });
+      if (!byLocation.has(key))
+        byLocation.set(key, { lat: coords[0], lng: coords[1], country, city, albums: [] });
+      byLocation.get(key)!.albums.push({
+        slug:    meta.slug,
+        label:   sysTagLabel(name),
+        tagName: name,
+        count:   meta.count,
+      });
     }
 
-    // Minimum radius so adjacent pins don't overlap, + 15% margin.
-    // chord = 2R·sin(π/n) >= PIN_DEG  →  R = PIN_DEG / (2·sin(π/n)) × 1.15
-    const PIN_DEG = 0.010;
-    const result: (Entry & { key: string })[] = [];
-    for (const entries of byLocation.values()) {
-      if (entries.length === 1) {
-        result.push({ ...entries[0], key: entries[0].slug });
-      } else {
-        const n      = entries.length;
-        const radius = (PIN_DEG / (2 * Math.sin(Math.PI / n))) * 1.15;
-        entries.forEach((e, i) => {
-          const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-          result.push({ ...e, key: e.slug,
-            lat: e.lat + radius * Math.cos(angle),
-            lng: e.lng + radius * Math.sin(angle),
-          });
-        });
-      }
+    return Array.from(byLocation.entries()).map(([key, loc]) => ({
+      ...loc,
+      key,
+      count: loc.albums.reduce((s, a) => s + a.count, 0),
+    }));
+  }, [systemTagIndex, isOwner]);
+
+  // When this tab activates with a pending nav: find the right pin and open it.
+  useEffect(() => {
+    if (!pendingNav || !sysTagMarkers.length) return;
+    const { tagName, mapCountry, mapCity } = pendingNav;
+    const marker = sysTagMarkers.find(m => m.albums.some(a => a.tagName === tagName))
+      ?? sysTagMarkers.find(m =>
+        m.city === mapCity && translateCountry(m.country, 'en') === mapCountry
+      );
+    // Only skip if panel is already open for this exact tag.
+    // Do NOT skip when tagName is undefined (navigating from Timeline/PathTags
+    // where the tag isn't known) — undefined === undefined would incorrectly block.
+    const alreadyOpen = tagName != null && panel?.albums.some(a => a.tagName === tagName);
+    if (!marker || alreadyOpen) return;
+    const dispCountry = translateCountry(marker.country, lang);
+    const dispLabel   = marker.city ? `${marker.city}, ${dispCountry}` : dispCountry;
+    setPanel({
+      title:    dispLabel,
+      albums:   marker.albums.map(a => ({ slug: a.slug, label: a.label, tagName: a.tagName })),
+      fallback: dispLabel,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNav, sysTagMarkers]);
+
+  // When navigating to a specific photo hash, switch to the album that contains it.
+  useEffect(() => {
+    if (!pendingNav?.hash || !panelSections) return;
+    const idx = panelSections.findIndex(s => s.photos.some(p => p.hash === pendingNav.hash));
+    if (idx >= 0) setSelectedAlbumIdx(idx);
+    scrollToHash(pendingNav.hash, panelBodyRef.current, clearNav);
+  }, [panelSections, pendingNav, clearNav]);
+
+  // Scroll to bottom after render when End button was clicked (loads all photos first)
+  useLayoutEffect(() => {
+    if (!scrollToEndRef.current) return;
+    scrollToEndRef.current = false;
+    if (panelBodyRef.current) {
+      panelBodyRef.current.scrollTop = panelBodyRef.current.scrollHeight;
     }
-    return result;
-  }, [systemTagIndex]);
+  });
+
+  const handleGoToStart = useCallback(() => {
+    panelBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const handleGoToEnd = useCallback(() => {
+    const sec = panelSections?.[selectedAlbumIdx];
+    if (!sec) return;
+    scrollToEndRef.current = true;
+    setSecVisible(prev => {
+      const next = new Map(prev);
+      next.set(selectedAlbumIdx, sec.photos.length);
+      return next;
+    });
+  }, [panelSections, selectedAlbumIdx]);
 
   return (
     <div className="map-layout">
@@ -180,10 +319,10 @@ export default function MapView({ displayName }: { displayName?: string }) {
             noWrap
           />
           {mapLoaded && sysTagMarkers.map(m => {
-            const label       = sysTagLabel(m.name);
             const dispCountry = translateCountry(m.country, lang);
-            const dispLabel   = label ? `${label}, ${dispCountry}` : dispCountry;
-            const isSelected  = panel?.slugs.includes(m.slug) ?? false;
+            const dispCity    = m.city || dispCountry;
+            const dispLabel   = m.city ? `${m.city}, ${dispCountry}` : dispCountry;
+            const isSelected  = panel?.albums.some(a => m.albums.some(ma => ma.slug === a.slug)) ?? false;
             return (
               <Marker
                 key={m.key}
@@ -191,12 +330,18 @@ export default function MapView({ displayName }: { displayName?: string }) {
                 icon={isSelected ? SELECTED_ICON : DEFAULT_ICON}
                 zIndexOffset={isSelected ? 1000 : 0}
                 eventHandlers={{
-                  click: () => setPanel({ title: dispLabel, slugs: [m.slug], fallback: dispLabel }),
+                  click: () => setPanel({
+                    title:    dispLabel,
+
+                    albums:   m.albums.map(a => ({ slug: a.slug, label: a.label, tagName: a.tagName })),
+                    fallback: dispLabel,
+                  }),
                 }}
               >
                 <Popup>
                   <strong>{dispLabel}</strong>
                   <br />{m.count.toLocaleString()} {tr.photos}
+                  {m.albums.length > 1 && <><br />{m.albums.length} albums</>}
                 </Popup>
               </Marker>
             );
@@ -206,7 +351,14 @@ export default function MapView({ displayName }: { displayName?: string }) {
       </div>
 
       {panel && (
-        <div className="map-panel">
+        <div className="map-panel" style={Capacitor.isNativePlatform() ? undefined : { width: panelWidth }}>
+          <div
+            className="panel-width-handle"
+            onPointerDown={onWidthDragStart}
+            onPointerMove={onWidthDragMove}
+            onPointerUp={onWidthDragEnd}
+            onPointerCancel={onWidthDragEnd}
+          />
           <div className="panel-header">
             <div className="panel-header-left">
               <h2 className="panel-title">{panel.title}</h2>
@@ -214,15 +366,83 @@ export default function MapView({ displayName }: { displayName?: string }) {
             <button className="panel-close" onClick={() => setPanel(null)}>✕</button>
           </div>
 
+          <div className="panel-content" ref={panelContentRef}>
+          {panelSections && panelSections.length > 1 && (
+            <>
+              <nav className="panel-toc" style={{ height: tocHeight, minHeight: 40, maxHeight: '70%' }}>
+                {panelSections.map((sec, i) => (
+                  <div key={i} className="panel-toc-row">
+                    <button
+                      className={'panel-toc-item' + (i === selectedAlbumIdx ? ' active' : '')}
+                      onClick={() => {
+                        setSelectedAlbumIdx(i);
+                        panelBodyRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+                      }}
+                    >
+                      {sec.label}<span className="toc-item-count"> · {sec.photos.length}</span>
+                    </button>
+                    <span
+                      className={'fav-star' + (isFavorite(sec.tagName) ? ' fav-star--on' : '')}
+                      role="button"
+                      tabIndex={0}
+                      title={isFavorite(sec.tagName) ? 'Remove from favorites' : 'Add to favorites'}
+                      onClick={() => toggleFavorite(sec.tagName)}
+                      onKeyDown={e => { if (e.key === 'Enter') toggleFavorite(sec.tagName); }}
+                    >★</span>
+                  </div>
+                ))}
+              </nav>
+              <div
+                className="panel-v-drag"
+                onPointerDown={onVDragStart}
+                onPointerMove={onVDragMove}
+                onPointerUp={onVDragEnd}
+                onPointerCancel={onVDragEnd}
+              />
+            </>
+          )}
+
+          {panelSections && panelSections.length > 0 && (
+            <div className="panel-nav-bar">
+              <button className="panel-nav-btn" onClick={handleGoToStart}>▲</button>
+              <button className="panel-nav-btn" onClick={handleGoToEnd}>▼</button>
+            </div>
+          )}
+
           <div className="panel-body" ref={panelBodyRef}>
             {panelLoading && <p className="panel-loading">{tr.loadingPhotos}</p>}
-            {panelPhotos  && (
-              <PhotoGrid
-                photos={panelPhotos}
-                placeFallback={panel.fallback}
-              />
-            )}
+            {panelSections && (() => {
+              const sec   = panelSections[selectedAlbumIdx];
+              if (!sec) return null;
+              const shown   = pendingNav?.hash ? sec.photos.length : (secVisible.get(selectedAlbumIdx) ?? PANEL_PAGE);
+              const hasMore = sec.photos.length > shown;
+              return (
+                <div className="album-section">
+                  {panelSections.length === 1 && (
+                    <div className="album-section-hdr">
+                      <span className="album-section-title">{sec.label} <span className="album-section-count">· {sec.photos.length}</span></span>
+                      <span
+                        className={'fav-star' + (isFavorite(sec.tagName) ? ' fav-star--on' : '')}
+                        role="button"
+                        tabIndex={0}
+                        title={isFavorite(sec.tagName) ? 'Remove from favorites' : 'Add to favorites'}
+                        onClick={() => toggleFavorite(sec.tagName)}
+                        onKeyDown={e => { if (e.key === 'Enter') toggleFavorite(sec.tagName); }}
+                      >★</span>
+                    </div>
+                  )}
+                  <PhotoGrid
+                    photos={sec.photos.slice(0, shown)}
+                    placeFallback={panel.fallback}
+                    navMode="map"
+                    navTagName={sec.tagName}
+                  />
+                  {hasMore && <div style={{ height: 1 }} data-sec-sentinel={selectedAlbumIdx} />}
+                </div>
+              );
+            })()}
           </div>
+          </div>{/* panel-content */}
         </div>
       )}
     </div>

@@ -1,82 +1,116 @@
 {
-  "generated": "2026-05-19T10:00:00Z",
-  "total": 176,
-  "locations": [
-    {
-      "continent": "Europe",
-      "country": "Spain",
-      "city": "Barcelona",
-      "lat": 41.39,
-      "lng": 2.17,
-      "count": 22
-    },
-    {
-      "continent": "Europe",
-      "country": "France",
-      "city": "Paris",
-      "lat": 48.86,
-      "lng": 2.35,
-      "count": 22
-    },
-    {
-      "continent": "Europe",
-      "country": "Italy",
-      "city": "Rome",
-      "lat": 41.9,
-      "lng": 12.5,
-      "count": 22
-    },
-    {
-      "continent": "North America",
-      "country": "USA",
-      "city": "New York",
-      "lat": 40.71,
-      "lng": -74.01,
-      "count": 22
-    },
-    {
-      "continent": "Asia",
-      "country": "Japan",
-      "city": "Tokyo",
-      "lat": 35.69,
-      "lng": 139.69,
-      "count": 22
-    },
-    {
-      "continent": "Oceania",
-      "country": "Australia",
-      "city": "Sydney",
-      "lat": -33.87,
-      "lng": 151.21,
-      "count": 22
-    },
-    {
-      "continent": "South America",
-      "country": "Argentina",
-      "city": "Buenos Aires",
-      "lat": -34.6,
-      "lng": -58.38,
-      "count": 22
-    },
-    {
-      "continent": "Africa",
-      "country": "Kenya",
-      "city": "Nairobi",
-      "lat": -1.29,
-      "lng": 36.82,
-      "count": 22
-    }
-  ],
-  "years": [
-    2019,
-    2020,
-    2021,
-    2022,
-    2023,
-    2024,
-    2025
-  ],
-  "general_folders": [
-    "Travel"
-  ]
+    "generated": "2026-05-19T10:00:00Z",
+    "total": 216,
+    "locations": [
+        {
+            "continent": "Europe",
+            "country": "Spain",
+            "city": "Barcelona",
+            "lat": 41.39,
+            "lng": 2.17,
+            "count": 22
+        },
+        {
+            "continent": "Europe",
+            "country": "France",
+            "city": "Paris",
+            "lat": 48.86,
+            "lng": 2.35,
+            "count": 22
+        },
+        {
+            "continent": "Europe",
+            "country": "Italy",
+            "city": "Rome",
+            "lat": 41.9,
+            "lng": 12.5,
+            "count": 22
+        },
+        {
+            "continent": "North America",
+            "country": "USA",
+            "city": "New York",
+            "lat": 40.71,
+            "lng": -74.01,
+            "count": 22
+        },
+        {
+            "continent": "Asia",
+            "country": "Japan",
+            "city": "Tokyo",
+            "lat": 35.69,
+            "lng": 139.69,
+            "count": 22
+        },
+        {
+            "continent": "Oceania",
+            "country": "Australia",
+            "city": "Sydney",
+            "lat": -33.87,
+            "lng": 151.21,
+            "count": 22
+        },
+        {
+            "continent": "South America",
+            "country": "Argentina",
+            "city": "Buenos Aires",
+            "lat": -34.6,
+            "lng": -58.38,
+            "count": 22
+        },
+        {
+            "continent": "Africa",
+            "country": "Kenya",
+            "city": "Nairobi",
+            "lat": -1.29,
+            "lng": 36.82,
+            "count": 22
+        },
+        {
+            "continent": "Europe",
+            "country": "Spain",
+            "city": "Madrid",
+            "lat": 40.4168,
+            "lng": -3.7038,
+            "count": 10
+        },
+        {
+            "continent": "Asia",
+            "country": "China",
+            "city": "Beijing",
+            "lat": 39.9042,
+            "lng": 116.4074,
+            "count": 10
+        },
+        {
+            "continent": "Europe",
+            "country": "Greece",
+            "city": "Santorini",
+            "lat": 36.3932,
+            "lng": 25.4615,
+            "count": 10
+        },
+        {
+            "continent": "North America",
+            "country": "USA",
+            "city": "Houston",
+            "lat": 29.7604,
+            "lng": -95.3698,
+            "count": 10
+        }
+    ],
+    "years": [
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025
+    ],
+    "general_folders": [
+        "Travel",
+        "Sport",
+        "Science"
+    ]
 }

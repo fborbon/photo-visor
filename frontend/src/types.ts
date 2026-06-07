@@ -16,6 +16,7 @@ export interface PhotoEntry {
   make?:   string;          // EXIF camera make e.g. "Samsung"
   model?:  string;          // EXIF camera model e.g. "SM-A326B"
   video_proxy?: string | null;  // S3 key for H.264 MP4 proxy of non-MP4 videos
+  name?: string;               // original filename e.g. "IMG_20240101_120000.jpg" (phone-synced photos)
 }
 
 export interface LocationSummary {
@@ -38,10 +39,10 @@ export interface Summary {
 export type Tab = 'map' | 'timeline' | 'tags' | 'upload' | 'latest' | 'slots' | 'stats' | 'sync' | 'trash' | 'usage';
 
 export interface AlbumConfig {
-  sync:        boolean;
-  private:     boolean;
-  location:    string;
-  description: string;
+  sync:         boolean;
+  location:     string;
+  forcePath:    string;
+  createFolder: boolean;
 }
 
 export interface AlbumItem {

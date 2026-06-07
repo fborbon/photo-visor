@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLang }    from '../context/LangContext';
 import { useTags }    from '../context/TagsContext';
 import { usePrivacy } from '../context/PrivacyContext';
+import { useNav }     from '../context/NavContext';
 import { useIndex }   from '../hooks/useIndex';
 import { Summary, PhotoEntry } from '../types';
 import PhotoModal     from './PhotoModal';
@@ -20,6 +21,7 @@ export default function SlotMachineView() {
   const { tr }   = useLang();
   const tagsCtx  = useTags();
   const { isOwner, isPhotoPrivate } = usePrivacy();
+  const { navigate } = useNav();
   const { data: summary } = useIndex<Summary>('index/summary.json');
 
   // ── Photo pool ─────────────────────────────────────────────────────
@@ -57,6 +59,19 @@ export default function SlotMachineView() {
 
   const isSpinning = spinMask.some(Boolean);
   const ready      = poolSize >= SLOT_COUNT;
+
+  // Safety reset: if spin gets stuck (e.g. Android background timer throttling),
+  // force-clear after max expected duration + 1.5 s buffer.
+  useEffect(() => {
+    if (!isSpinning) return;
+    const maxMs = SPIN_DELAY + SLOT_COUNT * STOP_STAGGER + 1500;
+    const safety = window.setTimeout(() => {
+      spinningRef.current = Array(SLOT_COUNT).fill(false);
+      setSpinMask(Array(SLOT_COUNT).fill(false));
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    }, maxMs);
+    return () => window.clearTimeout(safety);
+  }, [isSpinning]);
 
   // ── Modal / tag / comment state ────────────────────────────────────
   const [modalIdx,     setModalIdx]     = useState<number | null>(null);
@@ -100,6 +115,7 @@ export default function SlotMachineView() {
 
         if (i === SLOT_COUNT - 1 && intervalRef.current) {
           clearInterval(intervalRef.current);
+          intervalRef.current = null;
         }
       }, SPIN_DELAY + i * STOP_STAGGER);
     }
@@ -116,8 +132,20 @@ export default function SlotMachineView() {
     <div className="slots-layout">
       <div className="slots-machine">
 
-        {/* Decorative header */}
-        <div className="slots-title">🎰 {tr.tabSlots}</div>
+        {/* Decorative header + lever */}
+        <div className="slots-header-row">
+          <div className="slots-title">🎰 {tr.tabSlots}</div>
+          {!ready && <p className="slots-hint">{tr.loading}</p>}
+          {ready && (
+            <button
+              className={'slots-lever' + (isSpinning ? ' spinning' : '')}
+              onClick={handleSpin}
+              disabled={isSpinning}
+            >
+              {isSpinning ? tr.slotSpinning : tr.slotSpin}
+            </button>
+          )}
+        </div>
 
         {/* Slot grid */}
         <div className="slots-grid">
@@ -147,22 +175,27 @@ export default function SlotMachineView() {
               ) : (
                 <div className="slot-empty">🎰</div>
               )}
+
+              {/* Cross-tab nav buttons — visible when photo has landed */}
+              {photo && !spinMask[i] && (
+                <div className="thumb-nav-icons" onClick={e => e.stopPropagation()}>
+                  <button className="thumb-nav-btn" title="Go to Timeline" onClick={() => {
+                    const dt = photo.dt ? new Date(photo.dt) : null;
+                    navigate('timeline', { hash: photo.hash, year: dt?.getFullYear(), month: dt ? dt.getMonth() + 1 : undefined });
+                  }}>📅</button>
+                  <button className="thumb-nav-btn" title="Go to Map pin" onClick={() => {
+                    const derivedTag = Object.keys(tagsCtx.systemTagIndex.tags).find(name =>
+                      photo.path?.includes(name) || photo.folder?.includes(name)
+                    );
+                    navigate('map', { hash: photo.hash, tagName: derivedTag, mapCountry: photo.country ?? undefined, mapCity: photo.city ?? undefined });
+                  }}>📍</button>
+                  <button className="thumb-nav-btn" title="Go to folder" onClick={() => {
+                    navigate('tags', { hash: photo.hash, folderPath: photo.path ? photo.path.split('/').slice(0, -1).join('/') : photo.folder });
+                  }}>📂</button>
+                </div>
+              )}
             </div>
           ))}
-        </div>
-
-        {/* Lever */}
-        <div className="slots-lever-row">
-          {!ready && <p className="slots-hint">{tr.loading}</p>}
-          {ready && (
-            <button
-              className={'slots-lever' + (isSpinning ? ' spinning' : '')}
-              onClick={handleSpin}
-              disabled={isSpinning}
-            >
-              {isSpinning ? tr.slotSpinning : tr.slotSpin}
-            </button>
-          )}
         </div>
 
         {ready && !isSpinning && landed.length === 0 && (

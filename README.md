@@ -1,6 +1,6 @@
 # 📷 Photo Visor
 
-A personal family photo viewer hosted on AWS — exploring 194 000+ photos across a world map and timeline with tagging, commenting, direct upload, and a slot-machine random-discovery mode. The architecture is fully serverless and database-free: originals live in S3 Glacier Instant Retrieval, thumbnails and pre-computed JSON indexes are delivered via CloudFront, and an AWS Lambda handles EXIF processing for newly uploaded photos. A React 18 PWA serves the browser frontend; an Android app is available via Google Play Internal Testing.
+A personal family photo viewer hosted on AWS — exploring 194 000+ photos across a world map and timeline with tagging, favorites, phone-to-cloud sync, and a slot-machine random-discovery mode. The architecture is fully serverless and database-free: originals live in S3 Glacier Instant Retrieval, thumbnails and pre-computed JSON indexes are delivered via CloudFront, and an AWS Lambda handles EXIF processing for newly uploaded photos. A React 18 PWA serves the browser frontend; an Android app is available via Google Play Internal Testing.
 
 **Main technologies:** React 18 + TypeScript + Vite (PWA) · AWS S3 (Glacier IR + Standard) · Amazon CloudFront · AWS Cognito · AWS Lambda (Python) · AWS CDK (TypeScript, infrastructure-as-code) · Leaflet + react-leaflet (world map) · Capacitor 6 (Android) · Pillow + exifread (EXIF processing)
 
@@ -37,12 +37,13 @@ A personal family photo viewer hosted on AWS — exploring 194 000+ photos acros
 
 Key user-facing tabs:
 
-- **Map** — photos plotted on a Leaflet world map by GPS / folder geocoding
-- **Timeline** — photos browsed by year → month
+- **Map** — photos plotted on a Leaflet world map by GPS / folder geocoding; album headers show photo counts
+- **Timeline** — photos browsed by year → month; auto-redirects to the latest month on open
 - **Tags** — per-user private tags with optional family sharing
 - **Latest** — recently added photos, newest tags, newest comments
 - **Slot Machine** — random photo discovery (10 reels, slot-machine animation)
-- **Upload** — owner-only direct upload to S3 with EXIF processing
+- **Sync** — owner-only phone-to-cloud album sync; favorites synced across phone and web via S3
+- **Stats** — summary cards, per-year bar chart, top-countries breakdown
 
 ---
 
@@ -74,9 +75,9 @@ All images below use placeholder photos — no personal content is included.
 
 <p align="center"><img src="docs/screenshots/06_stats.svg" alt="Statistics tab" width="900"/></p>
 
-**⬆ Upload** *(owner only)* — drag-and-drop upload with per-file progress; Lambda processes EXIF on arrival
+**🔄 Sync** *(owner only)* — phone-to-cloud album sync over MTP/Wi-Fi; favorites toggle written to `index/favorites/{ownerKey}.json` and merged across devices by timestamp
 
-<p align="center"><img src="docs/screenshots/07_upload.svg" alt="Upload tab" width="900"/></p>
+<p align="center"><img src="docs/screenshots/07_sync.svg" alt="Sync tab" width="900"/></p>
 
 ---
 
@@ -99,10 +100,11 @@ All images below use placeholder photos — no personal content is included.
 │  index/summary.json       ← S3 Standard                          │
 │  index/time/{year}.json   ← S3 Standard                          │
 │  index/geo/{folder}.json  ← S3 Standard                          │
-│  index/tags/{user}.json   ← S3 Standard (per-user private tags)  │
-│  index/tags/shared.json   ← S3 Standard (family-shared tags)     │
-│  index/recent.json        ← S3 Standard (last 100 ingested)      │
-│  index/private.json       ← S3 Standard (privacy overrides)      │
+│  index/tags/{user}.json       ← S3 Standard (per-user private tags)      │
+│  index/tags/shared.json       ← S3 Standard (family-shared tags)         │
+│  index/favorites/{user}.json  ← S3 Standard (per-user favorites, synced) │
+│  index/recent.json            ← S3 Standard (last 100 ingested)           │
+│  index/private.json           ← S3 Standard (privacy overrides)           │
 │  app/                     ← React PWA build                      │
 └───────────────────────────┬───────────────────────────────────────┘
                             │  Origin Access Control (OAC)
@@ -325,16 +327,16 @@ flowchart TD
 
     subgraph FE["Browser / Android App"]
         AUTH["AWS Amplify\nCognito auth"]
-        MAP["Map tab\nreact-leaflet"]
-        TL["Timeline tab"]
+        MAP["Map tab\nreact-leaflet · photo counts"]
+        TL["Timeline tab\nauto-selects latest month"]
         TAGS["Tags tab\nprivate + shared JSON"]
         LATEST["Latest tab"]
         SLOTS["Slot Machine tab"]
-        UP["Upload tab\nS3 direct upload"]
+        SYNC["Sync tab\nphone-to-cloud · favorites S3 sync"]
     end
 
-    AUTH -->|"Identity Pool credentials"| UP
-    UP -->|"PutObject"| P
+    AUTH -->|"Identity Pool credentials"| SYNC
+    SYNC -->|"PutObject (favorites)"| IDX
 ```
 
 ### 6.2 Function-Level Call Graph

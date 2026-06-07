@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { fetchAuthSession, getCurrentUser } from 'aws-amplify/auth';
 import { S3Client, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import config from '../config';
-import type { AlbumConfig, AlbumItem, UserTags, PhotoEntry } from '../types';
+import type { AlbumConfig, AlbumItem, UserTags, PhotoEntry, SystemTagMeta } from '../types';
 
 export type { AlbumConfig, AlbumItem };
 
@@ -40,11 +40,188 @@ function isCameraAlbum(albumIdentifier: string, albumName: string): boolean {
   return /\/DCIM\/Camera\b/i.test(albumIdentifier) || albumName.trim().toLowerCase() === 'camera';
 }
 
+function thumbS3Key(hash: string): string {
+  return `thumbs/${hash.slice(0, 2)}/${hash}.jpg`;
+}
+
+// Matches Python: re.sub(r"[^\w\-]", "_", tagName) in Unicode mode
+function tagToSlug(tagName: string): string {
+  return tagName.replace(/[^\p{L}\p{N}_\-]/gu, '_');
+}
+
+async function generateThumbBlob(blob: Blob): Promise<Blob | null> {
+  const SIZE = 300;
+  return new Promise<Blob | null>(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const scale = Math.min(SIZE / img.naturalWidth, SIZE / img.naturalHeight, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(img.naturalWidth  * scale);
+        canvas.height = Math.round(img.naturalHeight * scale);
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(resolve, 'image/jpeg', 0.75);
+      } catch { resolve(null); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+// Upload thumbnail to S3 and return its key (or null on failure).
+async function ensureThumb(s3: S3Client, hash: string, blob: Blob): Promise<string | null> {
+  const key = thumbS3Key(hash);
+  try {
+    await s3.send(new HeadObjectCommand({ Bucket: config.bucketName, Key: key }));
+    return key; // already exists
+  } catch { /* not found — generate */ }
+  try {
+    const thumbBlob = await generateThumbBlob(blob);
+    if (!thumbBlob) return null;
+    const buf = await thumbBlob.arrayBuffer();
+    await s3.send(new PutObjectCommand({
+      Bucket: config.bucketName, Key: key,
+      Body: new Uint8Array(buf), ContentType: 'image/jpeg',
+    }));
+    return key;
+  } catch { return null; }
+}
+
+// Merge new photos into index/sys/{slug}.json and update index/tags/system.json.
+async function updateSysIndex(
+  s3: S3Client,
+  sysTagPhotos: Record<string, { hash: string; s3_key: string; thumbKey: string | null }[]>,
+): Promise<void> {
+  const updatedCounts: Record<string, { slug: string; newCount: number }> = {};
+
+  for (const [tagName, photos] of Object.entries(sysTagPhotos)) {
+    const slug = tagToSlug(tagName);
+    let existing: PhotoEntry[] = [];
+    try {
+      const r = await fetch(config.cloudFrontUrl + '/index/sys/' + slug + '.json?nc=' + Date.now());
+      if (r.ok) existing = await r.json() as PhotoEntry[];
+    } catch { /* new tag */ }
+
+    const existingHashes = new Set(existing.map(p => p.hash));
+    const newPhotos: PhotoEntry[] = photos
+      .filter(p => !existingHashes.has(p.hash))
+      .map(p => ({
+        hash: p.hash, s3_key: p.s3_key, thumb: p.thumbKey,
+        dt: null, lat: null, lng: null, w: null, h: null,
+      }));
+
+    const merged = newPhotos.length ? [...existing, ...newPhotos] : existing;
+    if (newPhotos.length) {
+      await s3.send(new PutObjectCommand({
+        Bucket: config.bucketName, Key: 'index/sys/' + slug + '.json',
+        Body: JSON.stringify(merged), ContentType: 'application/json',
+        CacheControl: 'no-cache, no-store, must-revalidate',
+      }));
+    }
+    updatedCounts[tagName] = { slug, newCount: merged.length };
+  }
+
+  // Update master system tag index
+  let sysIdx: { updated: string; tags: Record<string, SystemTagMeta> } = { updated: '', tags: {} };
+  try {
+    const r = await fetch(config.cloudFrontUrl + '/index/tags/system.json?nc=' + Date.now());
+    if (r.ok) sysIdx = await r.json();
+  } catch { /* new index */ }
+
+  const now = new Date().toISOString();
+  const updatedTags = { ...sysIdx.tags };
+  for (const [tagName, { slug, newCount }] of Object.entries(updatedCounts)) {
+    updatedTags[tagName] = {
+      ...updatedTags[tagName],
+      slug, count: newCount,
+      public: tagName.startsWith('Camera/'),
+    };
+  }
+  await s3.send(new PutObjectCommand({
+    Bucket: config.bucketName, Key: 'index/tags/system.json',
+    Body: JSON.stringify({ ...sysIdx, updated: now, tags: updatedTags }),
+    ContentType: 'application/json', CacheControl: 'no-cache, no-store, must-revalidate',
+  }));
+}
+
+// Slug allowing Unicode letters/digits, hyphens, and slashes (mirrors Python re.sub for path keys)
+function pathSegSlug(path: string): string {
+  return path.replace(/[^\p{L}\p{N}_\-/]/gu, '_');
+}
+
+// After a Camera/ sys-tag sync: update index/path_tags.json and index/general/*.json
+async function updatePathTagsAndGeneralIndex(
+  s3: S3Client,
+  sysTagPhotos: Record<string, { hash: string; s3_key: string; thumbKey: string | null }[]>,
+): Promise<void> {
+  const newEntries: { display: string; s3: string }[] = [];
+  const generalUpdates: Record<string, { hash: string; s3_key: string; thumbKey: string | null; folder: string }[]> = {};
+
+  for (const [tagName, photos] of Object.entries(sysTagPhotos)) {
+    if (!tagName.startsWith('Camera/')) continue;
+    const inner = tagName.slice('Camera/'.length);
+    const parts = inner.split('/');
+    for (let d = 1; d <= parts.length; d++) {
+      const ancestor = parts.slice(0, d).join('/');
+      newEntries.push({ display: 'Camera/' + ancestor, s3: pathSegSlug(ancestor) });
+    }
+    const folderKey = pathSegSlug(inner);
+    if (!generalUpdates[folderKey]) generalUpdates[folderKey] = [];
+    generalUpdates[folderKey].push(...photos.map(p => ({ ...p, folder: inner })));
+  }
+
+  if (newEntries.length === 0) return;
+
+  // Merge into path_tags.json
+  let existingTags: { display: string; s3: string }[] = [];
+  try {
+    const r = await fetch(config.cloudFrontUrl + '/index/path_tags.json?nc=' + Date.now());
+    if (r.ok) existingTags = await r.json();
+  } catch { /* start fresh */ }
+  const existingSet = new Set(existingTags.map(e => e.display));
+  const toAdd = newEntries.filter(e => !existingSet.has(e.display));
+  if (toAdd.length > 0) {
+    await s3.send(new PutObjectCommand({
+      Bucket: config.bucketName, Key: 'index/path_tags.json',
+      Body: JSON.stringify([...existingTags, ...toAdd]),
+      ContentType: 'application/json', CacheControl: 'no-cache, no-store, must-revalidate',
+    }));
+  }
+
+  // Update general index file for each Camera/ folder
+  for (const [folderKey, photos] of Object.entries(generalUpdates)) {
+    let existing: { hash: string }[] = [];
+    try {
+      const r = await fetch(config.cloudFrontUrl + '/index/general/' + folderKey + '.json?nc=' + Date.now());
+      if (r.ok) existing = await r.json();
+    } catch { /* new */ }
+    const existingHashes = new Set(existing.map(p => p.hash));
+    const newPhotos = photos
+      .filter(p => !existingHashes.has(p.hash))
+      .map(p => ({
+        hash: p.hash, s3_key: p.s3_key, thumb: p.thumbKey ?? null,
+        dt: null, lat: null, lng: null, country: null, city: null,
+        folder: p.folder,
+        // path with dummy filename so PhotoGrid can strip it to get the Camera/ folder path
+        path: 'Camera/' + p.folder + '/_',
+        w: null, h: null, video_proxy: null,
+      }));
+    if (newPhotos.length > 0) {
+      await s3.send(new PutObjectCommand({
+        Bucket: config.bucketName, Key: 'index/general/' + folderKey + '.json',
+        Body: JSON.stringify([...existing, ...newPhotos]),
+        ContentType: 'application/json', CacheControl: 'no-cache, no-store, must-revalidate',
+      }));
+    }
+  }
+}
+
 export function deriveTagName(cfg: AlbumConfig, fallback: string): string {
-  const loc  = cfg.location.trim();
-  const desc = cfg.description.trim();
-  if (loc && desc) return `${loc} - ${desc}`;
-  return loc || desc || fallback;
+  const force = (cfg.forcePath ?? '').trim();
+  if (force) return cfg.createFolder ? `${force}/${fallback}` : force;
+  return (cfg.location ?? '').trim() || fallback;
 }
 
 function makeS3(): S3Client {
@@ -98,8 +275,8 @@ export function useSync(
   const finalizeSyncBatch = useCallback(async (
     s3: S3Client,
     privateHashes: string[],
-    tagMap: Record<string, { hash: string; s3_key: string }[]>,
-    syncBatch: { hash: string; s3_key: string; syncedAt: string }[],
+    tagMap: Record<string, { hash: string; s3_key: string; name?: string }[]>,
+    syncBatch: { hash: string; s3_key: string; name?: string; syncedAt: string }[],
     patch: (p: Partial<SyncStatus>) => void,
   ) => {
     if (syncBatch.length > 0) {
@@ -131,16 +308,29 @@ export function useSync(
 
       const updatedTags = { ...existing.tags };
       for (const [tagName, photos] of Object.entries(tagMap)) {
-        const prev       = updatedTags[tagName] ?? { photos: [], albums: [], createdAt: now };
-        const prevHashes = new Set((prev.photos as PhotoEntry[]).map(p => p.hash));
+        const prev      = updatedTags[tagName] ?? { photos: [], albums: [], createdAt: now };
+        const prevPhotos = prev.photos as PhotoEntry[];
+        const prevByHash = new Map(prevPhotos.map(p => [p.hash, p]));
+        const incomingByHash = new Map(photos.map(p => [p.hash, p]));
+
+        // Backfill `name` on existing entries that lack it (handles re-sync after fix)
+        let nameUpdated = false;
+        const mergedPrev = prevPhotos.map(p => {
+          const inc = incomingByHash.get(p.hash);
+          if (inc?.name && !p.name) { nameUpdated = true; return { ...p, name: inc.name }; }
+          return p;
+        });
+
         const newPhotos: PhotoEntry[] = photos
-          .filter(p => !prevHashes.has(p.hash))
-          .map(({ hash, s3_key }) => ({
+          .filter(p => !prevByHash.has(p.hash))
+          .map(({ hash, s3_key, name }) => ({
             hash, s3_key, thumb: null, dt: null,
             lat: null, lng: null, w: null, h: null,
+            ...(name ? { name } : {}),
           }));
-        if (newPhotos.length === 0) continue;
-        updatedTags[tagName] = { ...prev, photos: [...prev.photos, ...newPhotos] };
+
+        if (newPhotos.length === 0 && !nameUpdated) continue;
+        updatedTags[tagName] = { ...prev, photos: [...mergedPrev, ...newPhotos] };
       }
 
       await s3.send(new PutObjectCommand({
@@ -226,6 +416,7 @@ export function useSync(
       type FileItem = {
         path: string; name: string;
         shouldBePrivate: boolean; tagName: string;
+        isSystemPath: boolean;
       };
       const allItems: FileItem[] = [];
       const seenPaths = new Set<string>();
@@ -239,8 +430,11 @@ export function useSync(
           patch({ phase: 'enumerating', message: `Reading: ${album.name}…` });
           const { files } = await Filesystem.readdir({ path: album.identifier });
           const isCamera       = isCameraAlbum(album.identifier, album.name);
-          const shouldBePrivate = cfg ? cfg.private : !isCamera;
+          const shouldBePrivate = false;
+          void isCamera;
           const tagName         = cfg ? deriveTagName(cfg, album.name) : album.name;
+          const hasForce        = cfg ? (cfg.forcePath ?? '').trim() : '';
+          const isSystemPath    = !!hasForce && tagName.startsWith('Camera/');
           const imgFiles        = files.filter(f => IMAGE_EXTS.test(f.name));
           debugLines.push(`✓ ${album.name}: ${imgFiles.length} photos`);
 
@@ -248,10 +442,12 @@ export function useSync(
             const fullPath = album.identifier.replace(/\/$/, '') + '/' + f.name;
             if (seenPaths.has(fullPath)) continue;
             seenPaths.add(fullPath);
-            if (cursor && f.mtime) {
+            // For force-path albums: skip cursor filter so photos added with old
+            // mtime (moved from another album) are still picked up.
+            if (!hasForce && cursor && f.mtime) {
               if (new Date(f.mtime) <= cursor) continue;
             }
-            allItems.push({ path: fullPath, name: f.name, shouldBePrivate, tagName });
+            allItems.push({ path: fullPath, name: f.name, shouldBePrivate, tagName, isSystemPath });
           }
         } catch (e) {
           debugLines.push(`✗ ${album.name}: ${String(e).slice(0, 60)}`);
@@ -277,9 +473,10 @@ export function useSync(
       const s3 = makeS3();
       let uploaded = 0, skipped = 0, failed = 0;
       const privateHashes: string[] = [];
-      const tagMap: Record<string, { hash: string; s3_key: string }[]> = {};
+      const tagMap: Record<string, { hash: string; s3_key: string; name?: string }[]> = {};
+      const sysTagPhotos: Record<string, { hash: string; s3_key: string; thumbKey: string | null }[]> = {};
       const syncNow   = new Date().toISOString();
-      const syncBatch: { hash: string; s3_key: string; syncedAt: string }[] = [];
+      const syncBatch: { hash: string; s3_key: string; name?: string; syncedAt: string }[] = [];
 
       for (let i = 0; i < allItems.length; i++) {
         if (stopFlag.current) {
@@ -287,7 +484,7 @@ export function useSync(
           running.current = false;
           return;
         }
-        const { path, name, shouldBePrivate, tagName } = allItems[i];
+        const { path, name, shouldBePrivate, tagName, isSystemPath } = allItems[i];
         patch({ processed: i + 1, uploaded, skipped, failed, message: name });
 
         try {
@@ -298,13 +495,18 @@ export function useSync(
           const hash = await quickHash(blob);
           const key  = s3Key(hash, name);
 
+          // For force-path system albums: generate thumbnail and queue sys index update
+          if (isSystemPath) {
+            const thumbKey = await ensureThumb(s3, hash, blob);
+            if (!sysTagPhotos[tagName]) sysTagPhotos[tagName] = [];
+            sysTagPhotos[tagName].push({ hash, s3_key: key, thumbKey });
+          }
+
           try {
             await s3.send(new HeadObjectCommand({ Bucket: config.bucketName, Key: key }));
             skipped++;
             if (shouldBePrivate) privateHashes.push(hash);
-            if (!tagMap[tagName]) tagMap[tagName] = [];
-            tagMap[tagName].push({ hash, s3_key: key });
-            syncBatch.push({ hash, s3_key: key, syncedAt: syncNow });
+            syncBatch.push({ hash, s3_key: key, name, syncedAt: syncNow });
             patch({ skipped });
             continue;
           } catch { /* not found — upload */ }
@@ -316,13 +518,15 @@ export function useSync(
             Body:         new Uint8Array(buf),
             ContentType:  blob.type || 'image/jpeg',
             StorageClass: 'GLACIER_IR',
+            Metadata:     {
+              'original-filename': name,
+              ...(isSystemPath ? { 'album-path': encodeURI(tagName) } : {}),
+            },
           }));
 
           uploaded++;
           if (shouldBePrivate) privateHashes.push(hash);
-          if (!tagMap[tagName]) tagMap[tagName] = [];
-          tagMap[tagName].push({ hash, s3_key: key });
-          syncBatch.push({ hash, s3_key: key, syncedAt: syncNow });
+          syncBatch.push({ hash, s3_key: key, name, syncedAt: syncNow });
           patch({ uploaded });
         } catch {
           failed++;
@@ -331,6 +535,13 @@ export function useSync(
       }
 
       await finalizeSyncBatch(s3, privateHashes, tagMap, syncBatch, patch);
+
+      // Update system tag index + path tree for any force-path Camera/ albums
+      if (Object.keys(sysTagPhotos).length > 0) {
+        patch({ message: 'Updating photo index…' });
+        try { await updateSysIndex(s3, sysTagPhotos); } catch { /* non-fatal */ }
+        try { await updatePathTagsAndGeneralIndex(s3, sysTagPhotos); } catch { /* non-fatal */ }
+      }
       patch({ phase: 'done', message: '' });
 
     } catch (e) {
@@ -370,9 +581,9 @@ export function useSync(
       const tagName = deriveTagName(cfg, folderName);
       let uploaded = 0, skipped = 0, failed = 0;
       const privateHashes: string[] = [];
-      const tagMap: Record<string, { hash: string; s3_key: string }[]> = {};
+      const tagMap: Record<string, { hash: string; s3_key: string; name?: string }[]> = {};
       const syncNow   = new Date().toISOString();
-      const syncBatch: { hash: string; s3_key: string; syncedAt: string }[] = [];
+      const syncBatch: { hash: string; s3_key: string; name?: string; syncedAt: string }[] = [];
 
       for (let i = 0; i < imageFiles.length; i++) {
         if (stopFlag.current) {
@@ -391,10 +602,7 @@ export function useSync(
           try {
             await s3.send(new HeadObjectCommand({ Bucket: config.bucketName, Key: key }));
             skipped++;
-            if (cfg.private) privateHashes.push(hash);
-            if (!tagMap[tagName]) tagMap[tagName] = [];
-            tagMap[tagName].push({ hash, s3_key: key });
-            syncBatch.push({ hash, s3_key: key, syncedAt: syncNow });
+            syncBatch.push({ hash, s3_key: key, name: file.name, syncedAt: syncNow });
             patch({ skipped });
             continue;
           } catch { /* not found — upload */ }
@@ -406,13 +614,14 @@ export function useSync(
             Body:         new Uint8Array(buf),
             ContentType:  blob.type || 'image/jpeg',
             StorageClass: 'GLACIER_IR',
+            Metadata:     {
+              'original-filename': file.name,
+              ...(tagName.startsWith('Camera/') ? { 'album-path': encodeURI(tagName) } : {}),
+            },
           }));
 
           uploaded++;
-          if (cfg.private) privateHashes.push(hash);
-          if (!tagMap[tagName]) tagMap[tagName] = [];
-          tagMap[tagName].push({ hash, s3_key: key });
-          syncBatch.push({ hash, s3_key: key, syncedAt: syncNow });
+          syncBatch.push({ hash, s3_key: key, name: file.name, syncedAt: syncNow });
           patch({ uploaded });
         } catch {
           failed++;
