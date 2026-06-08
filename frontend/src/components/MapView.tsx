@@ -149,7 +149,7 @@ export default function MapView({ displayName }: { displayName?: string }) {
     setPanelSections(null);
     Promise.all(
       panel.albums.map(album =>
-        fetch(config.cloudFrontUrl + '/index/sys/' + album.slug + '.json')
+        fetch(config.indexBase + '/index/sys/' + album.slug + '.json')
           .then(r => r.json() as Promise<PhotoEntry[]>)
           .catch(() => [] as PhotoEntry[])
           .then(photos => ({ label: album.label, tagName: album.tagName, photos }))

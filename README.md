@@ -1,5 +1,7 @@
 # 📷 Photo Visor
 
+**[Live demo →](https://www.forwardforecasting.eu/photo-visor/)** (dummy albums, no sign-in required)
+
 A personal family photo viewer hosted on AWS — exploring 194 000+ photos across a world map and timeline with tagging, favorites, phone-to-cloud sync, and a slot-machine random-discovery mode. The architecture is fully serverless and database-free: originals live in S3 Glacier Instant Retrieval, thumbnails and pre-computed JSON indexes are delivered via CloudFront, and an AWS Lambda handles EXIF processing for newly uploaded photos. A React 18 PWA serves the browser frontend; an Android app is available via Google Play Internal Testing.
 
 **Main technologies:** React 18 + TypeScript + Vite (PWA) · AWS S3 (Glacier IR + Standard) · Amazon CloudFront · AWS Cognito · AWS Lambda (Python) · AWS CDK (TypeScript, infrastructure-as-code) · Leaflet + react-leaflet (world map) · Capacitor 6 (Android) · Pillow + exifread (EXIF processing)

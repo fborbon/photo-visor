@@ -21,18 +21,23 @@ interface TagsCtx {
 }
 
 // Demo system tag index — one pin per city present in the demo photos.
-// Tag names follow the same convention as the real bulk-ingest output so
-// that MapView's sysTagCountryKey / sysTagCityKey logic resolves coords.
+// Uses Spanish canonical country names (matching SYS_TAG_COORDS keys in sysTags.ts).
+// All entries carry public:true so they show when isOwner=false (demo mode).
+// Entries missing from the coords table provide lat/lng as fallback.
 const DEMO_SYSTEM_TAG_INDEX: SystemTagIndex = {
   updated: '2025-01-01T00:00:00Z',
   tags: {
-    'USA/New York':        { count: 4,  slug: 'USA_New_York' },
-    'France/Paris':        { count: 5,  slug: 'France_Paris' },
-    'Argentina/Buenos Aires': { count: 2, slug: 'Argentina_Buenos_Aires' },
-    'Australia/Sydney':    { count: 3,  slug: 'Australia_Sydney' },
-    'Kenya/Nairobi':       { count: 5,  slug: 'Kenya_Nairobi' },
-    'Japan/Tokyo':         { count: 1,  slug: 'Japan_Tokyo' },
-    'España/Barcelona':    { count: 2,  slug: 'España_Barcelona' },
+    'USA/New York':           { count: 3,  slug: 'USA_New_York',           public: true },
+    'Francia/Paris':          { count: 4,  slug: 'France_Paris',           public: true },
+    'Argentina/Buenos Aires': { count: 2,  slug: 'Argentina_Buenos_Aires', public: true },
+    'Australia/Sydney':       { count: 3,  slug: 'Australia_Sydney',       public: true },
+    'Japón/Tokyo':            { count: 1,  slug: 'Japan_Tokyo',            public: true },
+    'España/Barcelona':       { count: 2,  slug: 'Spain_Barcelona',        public: true },
+    'España/Madrid':          { count: 10, slug: 'Spain_Madrid',           public: true },
+    'Kenya/Nairobi':          { count: 5,  slug: 'Kenya_Nairobi',          public: true, lat: -1.2864, lng: 36.8172 },
+    'China/Beijing':          { count: 10, slug: 'China_Beijing',          public: true, lat: 39.9042, lng: 116.4074 },
+    'Greece/Santorini':       { count: 10, slug: 'Greece_Santorini',       public: true, lat: 36.3932, lng: 25.4615 },
+    'USA/Houston':            { count: 10, slug: 'USA_Houston',            public: true, lat: 29.7604, lng: -95.3698 },
   },
 };
 
