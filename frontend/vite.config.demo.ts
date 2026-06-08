@@ -13,11 +13,11 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      // Swap useIndex → demo hook (fetches from /photo-visor base path)
-      { find: resolve(src, 'hooks/useIndex'), replacement: resolve(src, 'hooks/useIndex.demo.ts') },
-      // Swap contexts → no-auth demo versions
-      { find: resolve(src, 'context/PrivacyContext'), replacement: resolve(src, 'context/PrivacyContext.demo.tsx') },
-      { find: resolve(src, 'context/TagsContext'),    replacement: resolve(src, 'context/TagsContext.demo.tsx') },
+      // Full-string regex aliases: replace() swaps the ENTIRE import specifier with
+      // the absolute replacement path. Partial regexes would leave a dangling prefix.
+      { find: /^.*\/hooks\/useIndex$/,        replacement: resolve(src, 'hooks/useIndex.demo.ts') },
+      { find: /^.*\/context\/PrivacyContext$/, replacement: resolve(src, 'context/PrivacyContext.demo.tsx') },
+      { find: /^.*\/context\/TagsContext$/,    replacement: resolve(src, 'context/TagsContext.demo.tsx') },
     ],
   },
   build: {
