@@ -14,7 +14,8 @@ const LangContext = createContext<LangCtx>({
 });
 
 export function LangProvider({ children }: { children: ReactNode }) {
-  const stored = (localStorage.getItem('lang') as Lang | null) ?? 'es';
+  const IS_DEMO = (import.meta.env.VITE_DEMO as string | undefined) === 'true';
+  const stored = (localStorage.getItem('lang') as Lang | null) ?? (IS_DEMO ? 'en' : 'es');
   const [lang, setLang] = useState<Lang>(stored);
 
   const toggle = () => {
