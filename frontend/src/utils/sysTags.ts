@@ -667,6 +667,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'USA:Providence':                 [ 41.8240,  -71.4128],  // Providence, Rhode Island
   'USA:Providence Rhode Island':    [ 41.8240,  -71.4128],  // Providence, RI (folder name variant)
   'USA:Povidence':                  [ 41.8240,  -71.4128],  // Providence, RI (folder typo)
+  'USA:Houston':         [ 29.7604,  -95.3698],  // Houston, Texas
   'USA:San Diego':       [ 32.7157, -117.1611],  // San Diego, California
   'USA:San Francisco':   [ 37.7749, -122.4194],  // San Francisco, California
   'USA:Silicon Valley':  [ 37.3875, -122.0575],  // Santa Clara County
