@@ -9,7 +9,7 @@ interface PrivacyCtx {
 }
 
 const PrivacyContext = createContext<PrivacyCtx>({
-  isOwner:        false,
+  isOwner:        true,
   isPhotoPrivate: () => false,
   isAlbumPrivate: () => false,
   togglePhoto:    async () => {},
@@ -18,7 +18,7 @@ const PrivacyContext = createContext<PrivacyCtx>({
 
 export function PrivacyProvider({ children }: { children: ReactNode }) {
   return <PrivacyContext.Provider value={{
-    isOwner:        false,
+    isOwner:        true,
     isPhotoPrivate: () => false,
     isAlbumPrivate: () => false,
     togglePhoto:    async () => {},

@@ -3,6 +3,7 @@ import { Tab, Summary } from './types';
 import { LangProvider, useLang }       from './context/LangContext';
 import { PrivacyProvider }             from './context/PrivacyContext';
 import { TagsProvider }                from './context/TagsContext';
+import { NavProvider }                 from './context/NavContext';
 import { useIndex }                    from './hooks/useIndex';
 import MapView        from './components/MapView';
 import TimelineView   from './components/TimelineView';
@@ -13,6 +14,7 @@ import StatisticsView from './components/StatisticsView';
 
 function Shell() {
   const [tab, setTab] = useState<Tab>('map');
+  const [timelineNav, setTimelineNav] = useState<{ year: number; month: number } | null>(null);
   const { lang, toggle, tr } = useLang();
   const { data: summary } = useIndex<Summary>('index/summary.json');
 
@@ -41,14 +43,16 @@ function Shell() {
       </header>
 
       <main className="main-content">
-        <TagsProvider>
-          {tab === 'map'      && <MapView />}
-          {tab === 'timeline' && <TimelineView />}
-          {tab === 'tags'     && <TagsView />}
-          {tab === 'latest'   && <LatestView />}
-          {tab === 'slots'    && <SlotMachineView />}
-          {tab === 'stats'    && <StatisticsView />}
-        </TagsProvider>
+        <NavProvider setTab={setTab}>
+          <TagsProvider>
+            {tab === 'map'      && <MapView />}
+            {tab === 'timeline' && <TimelineView initialYear={timelineNav?.year} initialMonth={timelineNav?.month} />}
+            {tab === 'tags'     && <TagsView />}
+            {tab === 'latest'   && <LatestView />}
+            {tab === 'slots'    && <SlotMachineView />}
+            {tab === 'stats'    && <StatisticsView onNavigate={(year, month) => { setTimelineNav({ year, month }); setTab('timeline'); }} />}
+          </TagsProvider>
+        </NavProvider>
       </main>
 
       {summary?.generated && (
