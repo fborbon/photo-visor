@@ -221,6 +221,7 @@ function TopCountriesChart({ locations }: { locations: Summary['locations'] }) {
   const byCountry = useMemo(() => {
     const map = new Map<string, number>();
     for (const loc of locations) {
+      if (!loc.country) continue;
       map.set(loc.country, (map.get(loc.country) ?? 0) + loc.count);
     }
     return [...map.entries()]
