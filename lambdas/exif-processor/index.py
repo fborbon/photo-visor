@@ -249,7 +249,7 @@ def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None
     if last is None or (now - last).total_seconds() >= NOTIFY_COOLDOWN_MIN * 60:
         count  = entry["pending"]
         link   = f"{CLOUDFRONT_URL}/app/?folder={quote(album_display, safe='')}"
-        if entry["is_new"]:
+        if entry.get("is_new"):
             text = f"📷 New album created: {album_display}\n{link}"
         else:
             plural = "s" if count != 1 else ""
