@@ -10,7 +10,7 @@ import time
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 
 import boto3
 import exifread
@@ -22,11 +22,17 @@ except ImportError:
     pass
 
 s3             = boto3.client("s3")
+ssm            = boto3.client("ssm")
 BUCKET         = os.environ["BUCKET_NAME"]
 THUMB_WIDTH    = int(os.environ.get("THUMB_WIDTH",   "400"))
 THUMB_QUALITY  = int(os.environ.get("THUMB_QUALITY", "72"))
 NOMINATIM_URL  = "https://nominatim.openstreetmap.org/reverse"
 NOMINATIM_UA   = "PhotoVisorLambda/1.0 (family photo archive)"
+
+# ── WhatsApp album notifications (CallMeBot) ───────────────────────────────────
+NOTIFY_COOLDOWN_MIN = int(os.environ.get("NOTIFY_COOLDOWN_MIN", "10"))
+WHATSAPP_PHONE_PARAM  = "/photo-visor/whatsapp/phone"
+WHATSAPP_APIKEY_PARAM = "/photo-visor/whatsapp/apikey"
 
 # ── EXIF helpers ──────────────────────────────────────────────────────────────
 
@@ -188,6 +194,64 @@ def _loc_key(country: str | None, city: str | None) -> str:
 def _path_seg_slug(path: str) -> str:
     return re.sub(r"[^\w\-/]", "_", path)
 
+# ── WhatsApp album notifications ────────────────────────────────────────────
+
+_whatsapp_creds = None
+
+def _get_whatsapp_creds() -> tuple[str | None, str | None]:
+    """Fetch CallMeBot phone/apikey from SSM, cached for the Lambda's lifetime."""
+    global _whatsapp_creds
+    if _whatsapp_creds is None:
+        try:
+            phone  = ssm.get_parameter(Name=WHATSAPP_PHONE_PARAM)["Parameter"]["Value"]
+            apikey = ssm.get_parameter(Name=WHATSAPP_APIKEY_PARAM)["Parameter"]["Value"]
+            _whatsapp_creds = (phone, apikey)
+        except Exception as e:
+            print(f"WhatsApp creds not configured: {e}")
+            _whatsapp_creds = (None, None)
+    return _whatsapp_creds
+
+def _send_whatsapp(message: str):
+    phone, apikey = _get_whatsapp_creds()
+    if not phone or not apikey:
+        return
+    try:
+        url = (f"https://api.callmebot.com/whatsapp.php?"
+               f"phone={phone}&apikey={apikey}&text={quote(message)}")
+        with urllib.request.urlopen(url, timeout=10) as r:
+            r.read()
+    except Exception as e:
+        print(f"WhatsApp notify error: {e}")
+
+def _notify_album_update(album_display: str, is_new: bool):
+    """
+    Send a WhatsApp message when a new album is created, or when new photos
+    land in an existing album. Existing-album notifications are coalesced:
+    at most one per album every NOTIFY_COOLDOWN_MIN, with the skipped count
+    folded into the next message.
+    """
+    state = _read_json("index/notify_state.json")
+    if not isinstance(state, dict):
+        state = {}
+    now = datetime.utcnow()
+
+    if is_new:
+        _send_whatsapp(f"📷 New album created: {album_display}")
+        state[album_display] = {"last_notified": now.isoformat(), "pending": 0}
+    else:
+        entry = state.get(album_display) or {"last_notified": None, "pending": 0}
+        last  = datetime.fromisoformat(entry["last_notified"]) if entry.get("last_notified") else None
+        if last is None or (now - last).total_seconds() >= NOTIFY_COOLDOWN_MIN * 60:
+            count  = entry.get("pending", 0) + 1
+            plural = "s" if count != 1 else ""
+            _send_whatsapp(f"🖼️ {count} new photo{plural} added to album: {album_display}")
+            entry = {"last_notified": now.isoformat(), "pending": 0}
+        else:
+            entry["pending"] = entry.get("pending", 0) + 1
+        state[album_display] = entry
+
+    _write_json("index/notify_state.json", state, "no-cache, no-store, must-revalidate")
+
 def _update_path_tags_and_general(album_path: str, hash_str: str, photo_entry: dict):
     """Update index/path_tags.json and index/general/*.json for a Camera/ album upload."""
     inner = album_path[len("Camera/"):]
@@ -222,10 +286,22 @@ def _update_path_tags_and_general(album_path: str, hash_str: str, photo_entry: d
             gen_data = []
     except Exception:
         gen_data = []
-    if not any(p.get("hash") == hash_str for p in gen_data):
+    is_new_photo = not any(p.get("hash") == hash_str for p in gen_data)
+    if is_new_photo:
         gen_data.append({**photo_entry, "folder": inner,
                          "path": "Camera/" + inner + "/_"})
         _write_json(gen_key, gen_data, "no-cache, no-store, must-revalidate")
+
+    # Notify via WhatsApp: new album, or new photos added to an existing one
+    album_display = "Camera/" + inner
+    is_new_album  = album_display in {e["display"] for e in to_add}
+    try:
+        if is_new_album:
+            _notify_album_update(album_display, is_new=True)
+        elif is_new_photo:
+            _notify_album_update(album_display, is_new=False)
+    except Exception as e:
+        print(f"Album notify error: {e}")
 
 # ── Main handler ──────────────────────────────────────────────────────────────
 

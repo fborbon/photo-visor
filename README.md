@@ -217,6 +217,15 @@ Geographic coordinates are resolved in two ways:
 
 Results are cached in SQLite to respect the OSM fair-use policy (1.1 s delay between API calls).
 
+### 3.6 Album Notifications (WhatsApp)
+
+When a phone-sync or web upload tags a photo with a `Camera/...` album path, the Lambda sends a WhatsApp message via [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/):
+
+- **New album created** → immediate message: `📷 New album created: Camera/...`
+- **New photos in an existing album** → coalesced message: `🖼️ N new photo(s) added to album: Camera/...`, at most once per `NOTIFY_COOLDOWN_MIN` (default 10 min) — extra uploads within the cooldown are folded into the next message's count.
+
+State is tracked in `index/notify_state.json`. Bulk-ingest uploads (no `album-path` metadata) never trigger notifications — see [3.1](#31-bulk-ingest-scriptsbulk-ingestpy). Credentials live in SSM Parameter Store (never in this repo); see [Environment / Secrets](#environment--secrets) for setup.
+
 ---
 
 ## 4. Libraries & Dependencies
@@ -408,6 +417,8 @@ Assumes a family of ~5 users browsing occasionally (~10 GB CloudFront egress/mon
 | Lambda | Compute (128 MB · ~3 s / call) | Free tier covers it | ~100 / month | **$0.00** |
 | S3 Glacier IR | GET / retrieval requests | $0.01 / 1 000 GETs | ~5 000 / month | **$0.05** |
 | S3 Standard | PUT requests *(ingest, one-time)* | $0.005 / 1 000 | ~200 000 total | **$1.00** *(one-time)* |
+| SSM Parameter Store | Standard parameter GetParameter | Free (standard tier) | ~100 / month | **$0.00** |
+| CallMeBot | WhatsApp album notifications | Free (unofficial API) | ~10 / month | **$0.00** |
 | | | | **Processing subtotal** | **≈ $0.05 / month** |
 
 ### 7.3 Connectivity
@@ -533,6 +544,21 @@ npx cap open android
 ### Environment / Secrets
 
 No secrets are committed. The only configuration is `stack-outputs.json` (CDK outputs) and `src/config.ts` (reads from stack outputs). AWS credentials are managed via IAM roles and the standard AWS credential chain.
+
+#### WhatsApp album notifications (optional)
+
+To enable [album notifications](#36-album-notifications-whatsapp):
+
+1. On WhatsApp, message **+34 644 59 71 65** (CallMeBot) with: `I allow callmebot to send me messages`
+2. CallMeBot replies with your personal API key.
+3. Store both values in SSM Parameter Store (one-time, never committed to git):
+   ```bash
+   aws ssm put-parameter --name /photo-visor/whatsapp/phone  --type String --value "<your number, e.g. 34911234567>"
+   aws ssm put-parameter --name /photo-visor/whatsapp/apikey --type String --value "<key from CallMeBot>"
+   ```
+4. `cdk deploy` once to grant the Lambda `ssm:GetParameter` on `/photo-visor/whatsapp/*`.
+
+If these parameters don't exist, the Lambda silently skips notifications (no error).
 
 ---
 

@@ -283,11 +283,22 @@ def handler(event, context):
         BUCKET_NAME: bucket.bucketName,
         THUMB_WIDTH: '400',
         THUMB_QUALITY: '72',
+        NOTIFY_COOLDOWN_MIN: '10',
       },
     });
 
     bucket.grantRead(exifLambda);
     bucket.grantPut(exifLambda);   // writes thumbs/ and updates index/
+
+    // Read-only access to the CallMeBot phone/apikey used for WhatsApp album
+    // notifications. Parameters are created out-of-band (see README) — never
+    // stored in this (public) repo.
+    exifLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions:   ['ssm:GetParameter'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/photo-visor/whatsapp/*`,
+      ],
+    }));
 
     // Only trigger on files uploaded to photos/ prefix.
     bucket.addEventNotification(
