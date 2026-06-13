@@ -24,6 +24,7 @@ interface Props {
   // Cross-tab navigation
   navMode?:       NavMode;    // which tab this grid lives in (controls which icons appear)
   navTagName?:    string;     // Map: full sysTag name (e.g. "España/Pamplona/Concierto Malu")
+  defaultSort?:   SortOrder;  // initial sort order (default: 'oldest')
 }
 
 interface MenuState { x: number; y: number; forSelection: boolean; singlePhoto: PhotoEntry | null; }
@@ -98,7 +99,7 @@ function shortModel(model: string): string {
 
 type SortOrder = 'default' | 'oldest' | 'newest';
 
-export default function PhotoGrid({ photos, albumKey, title, placeFallback = '', navMode, navTagName }: Props) {
+export default function PhotoGrid({ photos, albumKey, title, placeFallback = '', navMode, navTagName, defaultSort = 'oldest' }: Props) {
   const [modalIdx,     setModalIdx]     = useState<number | null>(null);
   const [selection,    setSelection]    = useState<Set<number>>(new Set());
   const lastClickedRef                  = useRef<number | null>(null);
@@ -108,7 +109,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   const longPressDidFire = useRef(false);
   const [addTagTarget, setAddTagTarget] = useState<PhotoEntry[] | null>(null);
   const [commentPhoto, setCommentPhoto] = useState<PhotoEntry | null>(null);
-  const [sortOrder,    setSortOrder]    = useState<SortOrder>('oldest');
+  const [sortOrder,    setSortOrder]    = useState<SortOrder>(defaultSort);
 
   const { navigate } = useNav();
   const { isOwner, isPhotoPrivate, isAlbumPrivate, togglePhoto } = usePrivacy();

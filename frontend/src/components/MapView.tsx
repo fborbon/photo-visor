@@ -163,12 +163,12 @@ export default function MapView({ displayName }: { displayName?: string }) {
           s.photos.reduce((m, p) => (p.dt && p.dt < m ? p.dt : m), '9999');
         return minDt(a).localeCompare(minDt(b));
       });
-      // Within each album: photos first (by date), videos at the end
+      // Within each album: photos first (newest date first), videos at the end
       filled.forEach(sec => {
         sec.photos.sort((a, b) => {
           const av = isVideo(a), bv = isVideo(b);
           if (av !== bv) return av ? 1 : -1;
-          return (a.dt ?? '9999').localeCompare(b.dt ?? '9999');
+          return (b.dt ?? '9999').localeCompare(a.dt ?? '9999');
         });
       });
       setPanelSections(filled);
@@ -436,6 +436,7 @@ export default function MapView({ displayName }: { displayName?: string }) {
                     placeFallback={panel.fallback}
                     navMode="map"
                     navTagName={sec.tagName}
+                    defaultSort="newest"
                   />
                   {hasMore && <div style={{ height: 1 }} data-sec-sentinel={selectedAlbumIdx} />}
                 </div>

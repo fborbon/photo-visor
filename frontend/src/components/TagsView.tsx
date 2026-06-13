@@ -636,7 +636,7 @@ export default function TagsView() {
             )}
             {pathPhotos && pathPhotos.length > 0 && (
               <>
-                <PhotoGrid photos={pathPhotos} placeFallback={folderFullLabel(sel.name)} navMode="path" />
+                <PhotoGrid photos={pathPhotos} placeFallback={folderFullLabel(sel.name)} navMode="path" defaultSort="newest" />
                 <div className="back-to-top-wrap">
                   <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
                 </div>

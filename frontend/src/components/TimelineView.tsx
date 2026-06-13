@@ -150,7 +150,7 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
                       {activeGroup.photos.length} {tr.photos}
                     </span>
                   </div>
-                  <PhotoGrid photos={activeGroup.photos} navMode="timeline" />
+                  <PhotoGrid photos={activeGroup.photos} navMode="timeline" defaultSort="newest" />
                   <div className="back-to-top-wrap">
                     <button
                       className="back-to-top-btn"
