@@ -226,6 +226,41 @@ def _send_whatsapp(message: str):
     except Exception as e:
         print(f"WhatsApp notify error: {e}")
 
+def _build_thumb_collage(thumb_keys: list[str], album_display: str) -> str | None:
+    """
+    Combine up to NOTIFY_MAX_THUMBS thumbnails into a single side-by-side
+    collage image so WhatsApp renders one link-preview box for the
+    notification (the free CallMeBot API is text-only and cannot attach
+    images directly).
+    """
+    if not thumb_keys:
+        return None
+    TILE, GAP = 300, 8
+    tiles = []
+    for key in thumb_keys:
+        try:
+            obj = s3.get_object(Bucket=BUCKET, Key=key)
+            img = Image.open(io.BytesIO(obj["Body"].read())).convert("RGB")
+            tiles.append(ImageOps.fit(img, (TILE, TILE), Image.LANCZOS))
+        except Exception as e:
+            print(f"Collage thumb error ({key}): {e}")
+    if not tiles:
+        return None
+
+    width  = len(tiles) * TILE + (len(tiles) + 1) * GAP
+    height = TILE + 2 * GAP
+    canvas = Image.new("RGB", (width, height), "white")
+    for i, tile in enumerate(tiles):
+        canvas.paste(tile, (GAP + i * (TILE + GAP), GAP))
+
+    buf = io.BytesIO()
+    canvas.save(buf, "JPEG", quality=80)
+    slug = re.sub(r"[^\w\-]", "_", album_display)
+    key  = f"thumbs/notify/{slug}_{int(time.time())}.jpg"
+    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue(), ContentType="image/jpeg",
+                   CacheControl="public, max-age=2592000, immutable")
+    return key
+
 def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None):
     """
     Send a WhatsApp message when a new album is created, or when new photos
@@ -250,12 +285,16 @@ def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None
         count  = entry["pending"]
         link   = f"{CLOUDFRONT_URL}/app/?folder={quote(album_display, safe='')}"
         if entry.get("is_new"):
-            text = f"📷 New album created: {album_display}\n{link}"
+            text = f"📷 New album created: {album_display}"
         else:
             plural = "s" if count != 1 else ""
-            text = f"🖼️ {count} new photo{plural} added to album: {album_display}\n{link}"
-        for t in entry.get("thumbs", []):
-            text += f"\n{CLOUDFRONT_URL}/{t}"
+            text = f"🖼️ {count} new photo{plural} added to album: {album_display}"
+
+        collage_key = _build_thumb_collage(entry.get("thumbs", []), album_display)
+        if collage_key:
+            text = f"{CLOUDFRONT_URL}/{collage_key}\n{text}"
+        text += f"\n{link}"
+
         _send_whatsapp(text)
         entry = {"last_notified": now.isoformat(), "pending": 0, "thumbs": [], "is_new": False}
 
