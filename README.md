@@ -224,7 +224,9 @@ When a phone-sync or web upload tags a photo with a `Camera/...` album path, the
 - **New album created** → immediate message: `📷 New album created: Camera/...`
 - **New photos in an existing album** → coalesced message: `🖼️ N new photo(s) added to album: Camera/...`, at most once per `NOTIFY_COOLDOWN_MIN` (default 10 min) — extra uploads within the cooldown are folded into the next message's count.
 
-State is tracked in `index/notify_state.json`. Bulk-ingest uploads (no `album-path` metadata) never trigger notifications — see [3.1](#31-bulk-ingest-scriptsbulk-ingestpy). Credentials live in SSM Parameter Store (never in this repo); see [Environment / Secrets](#environment--secrets) for setup.
+Each message includes a deep link (`https://fotos.forwardforecasting.eu/app/?folder=<album path>`) that opens the album directly in the Path Tags tab, plus direct CloudFront URLs to the thumbnails of up to `NOTIFY_MAX_THUMBS` (3) of the newly-added photos — WhatsApp renders these as inline image previews.
+
+State (including per-album pending counts and queued thumbnail keys) is tracked in `index/notify_state.json`. Bulk-ingest uploads (no `album-path` metadata) never trigger notifications — see [3.1](#31-bulk-ingest-scriptsbulk-ingestpy). Credentials live in SSM Parameter Store (never in this repo); see [Environment / Secrets](#environment--secrets) for setup.
 
 ---
 

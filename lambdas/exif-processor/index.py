@@ -33,6 +33,9 @@ NOMINATIM_UA   = "PhotoVisorLambda/1.0 (family photo archive)"
 NOTIFY_COOLDOWN_MIN = int(os.environ.get("NOTIFY_COOLDOWN_MIN", "10"))
 WHATSAPP_PHONE_PARAM  = "/photo-visor/whatsapp/phone"
 WHATSAPP_APIKEY_PARAM = "/photo-visor/whatsapp/apikey"
+# Must match CUSTOM_DOMAIN in infra/lib/photo-visor-stack.ts
+CLOUDFRONT_URL = "https://fotos.forwardforecasting.eu"
+NOTIFY_MAX_THUMBS = 3
 
 # ── EXIF helpers ──────────────────────────────────────────────────────────────
 
@@ -223,33 +226,40 @@ def _send_whatsapp(message: str):
     except Exception as e:
         print(f"WhatsApp notify error: {e}")
 
-def _notify_album_update(album_display: str, is_new: bool):
+def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None):
     """
     Send a WhatsApp message when a new album is created, or when new photos
-    land in an existing album. Existing-album notifications are coalesced:
-    at most one per album every NOTIFY_COOLDOWN_MIN, with the skipped count
-    folded into the next message.
+    land in an existing album. Notifications are coalesced: at most one per
+    album every NOTIFY_COOLDOWN_MIN, with the skipped count and up to
+    NOTIFY_MAX_THUMBS thumbnails folded into the next message.
     """
     state = _read_json("index/notify_state.json")
     if not isinstance(state, dict):
         state = {}
     now = datetime.utcnow()
 
+    entry = state.get(album_display) or {"last_notified": None, "pending": 0, "thumbs": [], "is_new": False}
     if is_new:
-        _send_whatsapp(f"📷 New album created: {album_display}")
-        state[album_display] = {"last_notified": now.isoformat(), "pending": 0}
-    else:
-        entry = state.get(album_display) or {"last_notified": None, "pending": 0}
-        last  = datetime.fromisoformat(entry["last_notified"]) if entry.get("last_notified") else None
-        if last is None or (now - last).total_seconds() >= NOTIFY_COOLDOWN_MIN * 60:
-            count  = entry.get("pending", 0) + 1
-            plural = "s" if count != 1 else ""
-            _send_whatsapp(f"🖼️ {count} new photo{plural} added to album: {album_display}")
-            entry = {"last_notified": now.isoformat(), "pending": 0}
-        else:
-            entry["pending"] = entry.get("pending", 0) + 1
-        state[album_display] = entry
+        entry["is_new"] = True
+    if thumb_key and len(entry.get("thumbs", [])) < NOTIFY_MAX_THUMBS:
+        entry.setdefault("thumbs", []).append(thumb_key)
+    entry["pending"] = entry.get("pending", 0) + 1
 
+    last = datetime.fromisoformat(entry["last_notified"]) if entry.get("last_notified") else None
+    if last is None or (now - last).total_seconds() >= NOTIFY_COOLDOWN_MIN * 60:
+        count  = entry["pending"]
+        link   = f"{CLOUDFRONT_URL}/app/?folder={quote(album_display, safe='')}"
+        if entry["is_new"]:
+            text = f"📷 New album created: {album_display}\n{link}"
+        else:
+            plural = "s" if count != 1 else ""
+            text = f"🖼️ {count} new photo{plural} added to album: {album_display}\n{link}"
+        for t in entry.get("thumbs", []):
+            text += f"\n{CLOUDFRONT_URL}/{t}"
+        _send_whatsapp(text)
+        entry = {"last_notified": now.isoformat(), "pending": 0, "thumbs": [], "is_new": False}
+
+    state[album_display] = entry
     _write_json("index/notify_state.json", state, "no-cache, no-store, must-revalidate")
 
 def _update_path_tags_and_general(album_path: str, hash_str: str, photo_entry: dict):
@@ -296,10 +306,8 @@ def _update_path_tags_and_general(album_path: str, hash_str: str, photo_entry: d
     album_display = "Camera/" + inner
     is_new_album  = album_display in {e["display"] for e in to_add}
     try:
-        if is_new_album:
-            _notify_album_update(album_display, is_new=True)
-        elif is_new_photo:
-            _notify_album_update(album_display, is_new=False)
+        if is_new_album or is_new_photo:
+            _notify_album_update(album_display, is_new=is_new_album, thumb_key=photo_entry.get("thumb"))
     except Exception as e:
         print(f"Album notify error: {e}")
 

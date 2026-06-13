@@ -11,7 +11,7 @@ import { TrashProvider }               from './context/TrashContext';
 import { AnalyticsProvider, useAnalytics } from './context/AnalyticsContext';
 import { useIndex }     from './hooks/useIndex';
 import { useSync }      from './hooks/useSync';
-import { NavProvider }  from './context/NavContext';
+import { NavProvider, DeepLinkHandler } from './context/NavContext';
 import { FavoritesProvider } from './context/FavoritesContext';
 import MapView          from './components/MapView';
 import TimelineView     from './components/TimelineView';
@@ -133,6 +133,7 @@ function AppInner({ signOut, email }: InnerProps) {
 
       <main className="main-content">
         <NavProvider setTab={setTab}>
+        <DeepLinkHandler />
         <FavoritesProvider>
         <TagsProvider>
           <TrashProvider>

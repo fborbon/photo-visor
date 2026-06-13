@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { Tab } from '../types';
 
 export interface PendingNav {
@@ -84,4 +84,26 @@ export function NavProvider({
       {children}
     </NavCtx.Provider>
   );
+}
+
+/** Reads `?folder=<Path Tags display path>` from the URL on mount (e.g. from a
+ * WhatsApp album-notification link) and navigates straight to that folder. */
+export function DeepLinkHandler() {
+  const { navigate } = useNav();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const folder = params.get('folder');
+    if (!folder) return;
+
+    navigate('tags', { hash: '', folderPath: folder });
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('folder');
+    window.history.replaceState({}, '', url.toString());
+    // Run once on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return null;
 }
