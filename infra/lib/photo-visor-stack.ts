@@ -72,17 +72,13 @@ export class PhotoVisorStack extends cdk.Stack {
     // ─── CloudFront Response Headers Policy (CORS) ───────────────────────────
     // Allows the Capacitor Android app (origin: https://localhost) and the web
     // app to fetch index files, thumbnails and photos from CloudFront.
+    // References the existing "photo-visor-cors" policy (created out-of-band
+    // by an earlier deploy) rather than creating a new one, to avoid a
+    // CloudFront name collision (policy names must be unique per account).
 
-    const corsHeadersPolicy = new cloudfront.ResponseHeadersPolicy(this, 'CorsHeadersPolicy', {
-      responseHeadersPolicyName: 'photo-visor-cors',
-      corsBehavior: {
-        accessControlAllowOrigins:     ['*'],
-        accessControlAllowHeaders:     ['*'],
-        accessControlAllowMethods:     ['GET', 'HEAD'],
-        accessControlAllowCredentials: false,
-        originOverride:                true,
-      },
-    });
+    const corsHeadersPolicy = cloudfront.ResponseHeadersPolicy.fromResponseHeadersPolicyId(
+      this, 'CorsHeadersPolicy', '98a0c3bb-e8a8-4684-aa38-42fc267a36f6',
+    );
 
     // ─── CloudFront Cache Policies ────────────────────────────────────────────
 
