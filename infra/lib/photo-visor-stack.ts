@@ -286,7 +286,7 @@ def handler(event, context):
     bucket.grantRead(exifLambda);
     bucket.grantPut(exifLambda);   // writes thumbs/ and updates index/
 
-    // Read-only access to the CallMeBot phone/apikey used for WhatsApp album
+    // Read-only access to Meta WhatsApp Cloud API credentials used for album
     // notifications. Parameters are created out-of-band (see README) — never
     // stored in this (public) repo.
     exifLambda.addToRolePolicy(new iam.PolicyStatement({

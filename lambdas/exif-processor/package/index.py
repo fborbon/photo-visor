@@ -10,7 +10,7 @@ import time
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 
 import boto3
 import exifread
@@ -22,11 +22,22 @@ except ImportError:
     pass
 
 s3             = boto3.client("s3")
+ssm            = boto3.client("ssm")
 BUCKET         = os.environ["BUCKET_NAME"]
 THUMB_WIDTH    = int(os.environ.get("THUMB_WIDTH",   "400"))
 THUMB_QUALITY  = int(os.environ.get("THUMB_QUALITY", "72"))
 NOMINATIM_URL  = "https://nominatim.openstreetmap.org/reverse"
 NOMINATIM_UA   = "PhotoVisorLambda/1.0 (family photo archive)"
+
+# ── WhatsApp album notifications (Meta Cloud API) ────────────────────────────
+NOTIFY_COOLDOWN_MIN = int(os.environ.get("NOTIFY_COOLDOWN_MIN", "10"))
+WHATSAPP_TOKEN_PARAM     = "/photo-visor/whatsapp/access_token"
+WHATSAPP_PHONE_ID_PARAM  = "/photo-visor/whatsapp/phone_number_id"
+WHATSAPP_RECIPIENT_PARAM = "/photo-visor/whatsapp/recipient_phone"
+GRAPH_API_VERSION = "v21.0"
+# Must match CUSTOM_DOMAIN in infra/lib/photo-visor-stack.ts
+CLOUDFRONT_URL = "https://fotos.forwardforecasting.eu"
+NOTIFY_MAX_THUMBS = 3
 
 # ── EXIF helpers ──────────────────────────────────────────────────────────────
 
@@ -188,6 +199,145 @@ def _loc_key(country: str | None, city: str | None) -> str:
 def _path_seg_slug(path: str) -> str:
     return re.sub(r"[^\w\-/]", "_", path)
 
+# ── WhatsApp album notifications ────────────────────────────────────────────
+
+_whatsapp_creds = None
+
+def _get_whatsapp_creds() -> tuple[str | None, str | None, str | None]:
+    """Fetch Meta Cloud API credentials from SSM, cached for the Lambda's lifetime."""
+    global _whatsapp_creds
+    if _whatsapp_creds is None:
+        try:
+            token     = ssm.get_parameter(Name=WHATSAPP_TOKEN_PARAM, WithDecryption=True)["Parameter"]["Value"]
+            phone_id  = ssm.get_parameter(Name=WHATSAPP_PHONE_ID_PARAM)["Parameter"]["Value"]
+            recipient = ssm.get_parameter(Name=WHATSAPP_RECIPIENT_PARAM)["Parameter"]["Value"]
+            _whatsapp_creds = (token, phone_id, recipient)
+        except Exception as e:
+            print(f"WhatsApp creds not configured: {e}")
+            _whatsapp_creds = (None, None, None)
+    return _whatsapp_creds
+
+def _send_whatsapp(text: str, image_url: str | None = None, link: str | None = None):
+    """Send a WhatsApp message via Meta Cloud API. Sends a single interactive
+    message with collage image header + body text + 'Go to album' URL button
+    when all parts are available; degrades gracefully to simpler formats."""
+    token, phone_id, recipient = _get_whatsapp_creds()
+    if not token or not phone_id or not recipient:
+        return
+    api_url = f"https://graph.facebook.com/{GRAPH_API_VERSION}/{phone_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    if link:
+        interactive = {
+            "type": "cta_url",
+            "body": {"text": text},
+            "action": {
+                "name": "cta_url",
+                "parameters": {"display_text": "Go to album", "url": link},
+            },
+        }
+        if image_url:
+            interactive["header"] = {"type": "image", "image": {"link": image_url}}
+        payload = json.dumps({
+            "messaging_product": "whatsapp",
+            "to": recipient,
+            "type": "interactive",
+            "interactive": interactive,
+        })
+    elif image_url:
+        payload = json.dumps({
+            "messaging_product": "whatsapp",
+            "to": recipient,
+            "type": "image",
+            "image": {"link": image_url, "caption": text},
+        })
+    else:
+        payload = json.dumps({
+            "messaging_product": "whatsapp",
+            "to": recipient,
+            "type": "text",
+            "text": {"body": text},
+        })
+    try:
+        req = urllib.request.Request(api_url, data=payload.encode(), headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            resp = json.loads(r.read())
+            print(f"WhatsApp sent: {resp}")
+    except Exception as e:
+        print(f"WhatsApp notify error: {e}")
+
+def _build_thumb_collage(thumb_keys: list[str], album_display: str) -> str | None:
+    """
+    Combine up to NOTIFY_MAX_THUMBS thumbnails into a side-by-side collage.
+    Returns the CloudFront URL of the collage JPEG (ASCII-safe key).
+    """
+    if not thumb_keys:
+        return None
+    TILE, GAP = 300, 8
+    tiles = []
+    for key in thumb_keys:
+        try:
+            obj = s3.get_object(Bucket=BUCKET, Key=key)
+            img = Image.open(io.BytesIO(obj["Body"].read())).convert("RGB")
+            tiles.append(ImageOps.fit(img, (TILE, TILE), Image.LANCZOS))
+        except Exception as e:
+            print(f"Collage thumb error ({key}): {e}")
+    if not tiles:
+        return None
+
+    width  = len(tiles) * TILE + (len(tiles) + 1) * GAP
+    height = TILE + 2 * GAP
+    canvas = Image.new("RGB", (width, height), "white")
+    for i, tile in enumerate(tiles):
+        canvas.paste(tile, (GAP + i * (TILE + GAP), GAP))
+
+    buf = io.BytesIO()
+    canvas.save(buf, "JPEG", quality=80)
+    slug = re.sub(r"[^a-zA-Z0-9_\-]", "_", album_display)
+    key  = f"thumbs/notify/{slug}_{int(time.time())}.jpg"
+    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue(),
+                  ContentType="image/jpeg",
+                  CacheControl="public, max-age=2592000, immutable")
+    return f"{CLOUDFRONT_URL}/{key}"
+
+def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None):
+    """
+    Send a WhatsApp message when a new album is created, or when new photos
+    land in an existing album. Notifications are coalesced: at most one per
+    album every NOTIFY_COOLDOWN_MIN, with the skipped count and up to
+    NOTIFY_MAX_THUMBS thumbnails folded into the next message.
+    """
+    state = _read_json("index/notify_state.json")
+    if not isinstance(state, dict):
+        state = {}
+    now = datetime.utcnow()
+
+    entry = state.get(album_display) or {"last_notified": None, "pending": 0, "thumbs": [], "is_new": False}
+    if is_new:
+        entry["is_new"] = True
+    if thumb_key and len(entry.get("thumbs", [])) < NOTIFY_MAX_THUMBS:
+        entry.setdefault("thumbs", []).append(thumb_key)
+    entry["pending"] = entry.get("pending", 0) + 1
+
+    last = datetime.fromisoformat(entry["last_notified"]) if entry.get("last_notified") else None
+    if last is None or (now - last).total_seconds() >= NOTIFY_COOLDOWN_MIN * 60:
+        count  = entry["pending"]
+        link   = f"{CLOUDFRONT_URL}/app/?folder={quote(album_display, safe='')}"
+        if entry.get("is_new"):
+            text = f"📷 New album created: {album_display}"
+        else:
+            plural = "s" if count != 1 else ""
+            text = f"🖼️ {count} new photo{plural} added to album: {album_display}"
+
+        collage_url = _build_thumb_collage(entry.get("thumbs", []), album_display)
+        _send_whatsapp(text, image_url=collage_url, link=link)
+        entry = {"last_notified": now.isoformat(), "pending": 0, "thumbs": [], "is_new": False}
+
+    state[album_display] = entry
+    _write_json("index/notify_state.json", state, "no-cache, no-store, must-revalidate")
+
 def _update_path_tags_and_general(album_path: str, hash_str: str, photo_entry: dict):
     """Update index/path_tags.json and index/general/*.json for a Camera/ album upload."""
     inner = album_path[len("Camera/"):]
@@ -222,10 +372,20 @@ def _update_path_tags_and_general(album_path: str, hash_str: str, photo_entry: d
             gen_data = []
     except Exception:
         gen_data = []
-    if not any(p.get("hash") == hash_str for p in gen_data):
+    is_new_photo = not any(p.get("hash") == hash_str for p in gen_data)
+    if is_new_photo:
         gen_data.append({**photo_entry, "folder": inner,
                          "path": "Camera/" + inner + "/_"})
         _write_json(gen_key, gen_data, "no-cache, no-store, must-revalidate")
+
+    # Notify via WhatsApp: new album, or new photos added to an existing one
+    album_display = "Camera/" + inner
+    is_new_album  = album_display in {e["display"] for e in to_add}
+    try:
+        if is_new_album or is_new_photo:
+            _notify_album_update(album_display, is_new=is_new_album, thumb_key=photo_entry.get("thumb"))
+    except Exception as e:
+        print(f"Album notify error: {e}")
 
 # ── Main handler ──────────────────────────────────────────────────────────────
 

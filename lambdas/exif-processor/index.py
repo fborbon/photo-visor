@@ -29,10 +29,12 @@ THUMB_QUALITY  = int(os.environ.get("THUMB_QUALITY", "72"))
 NOMINATIM_URL  = "https://nominatim.openstreetmap.org/reverse"
 NOMINATIM_UA   = "PhotoVisorLambda/1.0 (family photo archive)"
 
-# ── WhatsApp album notifications (CallMeBot) ───────────────────────────────────
+# ── WhatsApp album notifications (Meta Cloud API) ────────────────────────────
 NOTIFY_COOLDOWN_MIN = int(os.environ.get("NOTIFY_COOLDOWN_MIN", "10"))
-WHATSAPP_PHONE_PARAM  = "/photo-visor/whatsapp/phone"
-WHATSAPP_APIKEY_PARAM = "/photo-visor/whatsapp/apikey"
+WHATSAPP_TOKEN_PARAM     = "/photo-visor/whatsapp/access_token"
+WHATSAPP_PHONE_ID_PARAM  = "/photo-visor/whatsapp/phone_number_id"
+WHATSAPP_RECIPIENT_PARAM = "/photo-visor/whatsapp/recipient_phone"
+GRAPH_API_VERSION = "v21.0"
 # Must match CUSTOM_DOMAIN in infra/lib/photo-visor-stack.ts
 CLOUDFRONT_URL = "https://fotos.forwardforecasting.eu"
 NOTIFY_MAX_THUMBS = 3
@@ -201,37 +203,75 @@ def _path_seg_slug(path: str) -> str:
 
 _whatsapp_creds = None
 
-def _get_whatsapp_creds() -> tuple[str | None, str | None]:
-    """Fetch CallMeBot phone/apikey from SSM, cached for the Lambda's lifetime."""
+def _get_whatsapp_creds() -> tuple[str | None, str | None, str | None]:
+    """Fetch Meta Cloud API credentials from SSM, cached for the Lambda's lifetime."""
     global _whatsapp_creds
     if _whatsapp_creds is None:
         try:
-            phone  = ssm.get_parameter(Name=WHATSAPP_PHONE_PARAM)["Parameter"]["Value"]
-            apikey = ssm.get_parameter(Name=WHATSAPP_APIKEY_PARAM)["Parameter"]["Value"]
-            _whatsapp_creds = (phone, apikey)
+            token     = ssm.get_parameter(Name=WHATSAPP_TOKEN_PARAM, WithDecryption=True)["Parameter"]["Value"]
+            phone_id  = ssm.get_parameter(Name=WHATSAPP_PHONE_ID_PARAM)["Parameter"]["Value"]
+            recipient = ssm.get_parameter(Name=WHATSAPP_RECIPIENT_PARAM)["Parameter"]["Value"]
+            _whatsapp_creds = (token, phone_id, recipient)
         except Exception as e:
             print(f"WhatsApp creds not configured: {e}")
-            _whatsapp_creds = (None, None)
+            _whatsapp_creds = (None, None, None)
     return _whatsapp_creds
 
-def _send_whatsapp(message: str):
-    phone, apikey = _get_whatsapp_creds()
-    if not phone or not apikey:
+def _send_whatsapp(text: str, image_url: str | None = None, link: str | None = None):
+    """Send a WhatsApp message via Meta Cloud API. Sends a single interactive
+    message with collage image header + body text + 'Go to album' URL button
+    when all parts are available; degrades gracefully to simpler formats."""
+    token, phone_id, recipient = _get_whatsapp_creds()
+    if not token or not phone_id or not recipient:
         return
+    api_url = f"https://graph.facebook.com/{GRAPH_API_VERSION}/{phone_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    if link:
+        interactive = {
+            "type": "cta_url",
+            "body": {"text": text},
+            "action": {
+                "name": "cta_url",
+                "parameters": {"display_text": "Go to album", "url": link},
+            },
+        }
+        if image_url:
+            interactive["header"] = {"type": "image", "image": {"link": image_url}}
+        payload = json.dumps({
+            "messaging_product": "whatsapp",
+            "to": recipient,
+            "type": "interactive",
+            "interactive": interactive,
+        })
+    elif image_url:
+        payload = json.dumps({
+            "messaging_product": "whatsapp",
+            "to": recipient,
+            "type": "image",
+            "image": {"link": image_url, "caption": text},
+        })
+    else:
+        payload = json.dumps({
+            "messaging_product": "whatsapp",
+            "to": recipient,
+            "type": "text",
+            "text": {"body": text},
+        })
     try:
-        url = (f"https://api.callmebot.com/whatsapp.php?"
-               f"phone={phone}&apikey={apikey}&text={quote(message)}")
-        with urllib.request.urlopen(url, timeout=10) as r:
-            r.read()
+        req = urllib.request.Request(api_url, data=payload.encode(), headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            resp = json.loads(r.read())
+            print(f"WhatsApp sent: {resp}")
     except Exception as e:
         print(f"WhatsApp notify error: {e}")
 
 def _build_thumb_collage(thumb_keys: list[str], album_display: str) -> str | None:
     """
-    Combine up to NOTIFY_MAX_THUMBS thumbnails into a single side-by-side
-    collage image so WhatsApp renders one link-preview box for the
-    notification (the free CallMeBot API is text-only and cannot attach
-    images directly).
+    Combine up to NOTIFY_MAX_THUMBS thumbnails into a side-by-side collage.
+    Returns the CloudFront URL of the collage JPEG (ASCII-safe key).
     """
     if not thumb_keys:
         return None
@@ -255,11 +295,12 @@ def _build_thumb_collage(thumb_keys: list[str], album_display: str) -> str | Non
 
     buf = io.BytesIO()
     canvas.save(buf, "JPEG", quality=80)
-    slug = re.sub(r"[^\w\-]", "_", album_display)
+    slug = re.sub(r"[^a-zA-Z0-9_\-]", "_", album_display)
     key  = f"thumbs/notify/{slug}_{int(time.time())}.jpg"
-    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue(), ContentType="image/jpeg",
-                   CacheControl="public, max-age=2592000, immutable")
-    return key
+    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue(),
+                  ContentType="image/jpeg",
+                  CacheControl="public, max-age=2592000, immutable")
+    return f"{CLOUDFRONT_URL}/{key}"
 
 def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None):
     """
@@ -290,12 +331,8 @@ def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None
             plural = "s" if count != 1 else ""
             text = f"🖼️ {count} new photo{plural} added to album: {album_display}"
 
-        collage_key = _build_thumb_collage(entry.get("thumbs", []), album_display)
-        if collage_key:
-            text = f"{CLOUDFRONT_URL}/{collage_key}\n{text}"
-        text += f"\n{link}"
-
-        _send_whatsapp(text)
+        collage_url = _build_thumb_collage(entry.get("thumbs", []), album_display)
+        _send_whatsapp(text, image_url=collage_url, link=link)
         entry = {"last_notified": now.isoformat(), "pending": 0, "thumbs": [], "is_new": False}
 
     state[album_display] = entry

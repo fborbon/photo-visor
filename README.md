@@ -219,12 +219,12 @@ Results are cached in SQLite to respect the OSM fair-use policy (1.1 s delay bet
 
 ### 3.6 Album Notifications (WhatsApp)
 
-When a phone-sync or web upload tags a photo with a `Camera/...` album path, the Lambda sends a WhatsApp message via [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/):
+When a phone-sync or web upload tags a photo with a `Camera/...` album path, the Lambda sends a WhatsApp message via the [Meta WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) (free tier: 1,000 conversations/month):
 
 - **New album created** → immediate message: `📷 New album created: Camera/...`
 - **New photos in an existing album** → coalesced message: `🖼️ N new photo(s) added to album: Camera/...`, at most once per `NOTIFY_COOLDOWN_MIN` (default 10 min) — extra uploads within the cooldown are folded into the next message's count.
 
-Each message includes a deep link (`https://fotos.forwardforecasting.eu/app/?folder=<album path>`) that opens the album directly in the Path Tags tab. If thumbnails are available, the Lambda also combines up to `NOTIFY_MAX_THUMBS` (3) of the newly-added photos' thumbnails into a single side-by-side collage image (stored under `thumbs/notify/`) and puts its CloudFront URL first in the message — the free CallMeBot API is text-only, so WhatsApp's own link-preview renders this collage as the message's image.
+Each notification is sent as a single interactive WhatsApp message with up to three parts: a **collage image header** (up to `NOTIFY_MAX_THUMBS` thumbnails side-by-side, stored under `thumbs/notify/` with ASCII-safe keys), **body text** with album name and action, and a **"Go to album" button** linking to `https://fotos.forwardforecasting.eu/app/?folder=<album path>`. The message degrades gracefully: without thumbnails, the button message is sent without an image header; without a link, a plain text message is sent.
 
 State (including per-album pending counts and queued thumbnail keys) is tracked in `index/notify_state.json`. Bulk-ingest uploads (no `album-path` metadata) never trigger notifications — see [3.1](#31-bulk-ingest-scriptsbulk-ingestpy). Credentials live in SSM Parameter Store (never in this repo); see [Environment / Secrets](#environment--secrets) for setup.
 
@@ -420,7 +420,7 @@ Assumes a family of ~5 users browsing occasionally (~10 GB CloudFront egress/mon
 | S3 Glacier IR | GET / retrieval requests | $0.01 / 1 000 GETs | ~5 000 / month | **$0.05** |
 | S3 Standard | PUT requests *(ingest, one-time)* | $0.005 / 1 000 | ~200 000 total | **$1.00** *(one-time)* |
 | SSM Parameter Store | Standard parameter GetParameter | Free (standard tier) | ~100 / month | **$0.00** |
-| CallMeBot | WhatsApp album notifications | Free (unofficial API) | ~10 / month | **$0.00** |
+| Meta WhatsApp Cloud API | WhatsApp album notifications | Free tier (1,000 conversations/month) | ~10 / month | **$0.00** |
 | | | | **Processing subtotal** | **≈ $0.05 / month** |
 
 ### 7.3 Connectivity
@@ -549,18 +549,20 @@ No secrets are committed. The only configuration is `stack-outputs.json` (CDK ou
 
 #### WhatsApp album notifications (optional)
 
-To enable [album notifications](#36-album-notifications-whatsapp):
+To enable [album notifications](#36-album-notifications-whatsapp) via the Meta WhatsApp Cloud API free tier:
 
-1. On WhatsApp, message **+34 644 59 71 65** (CallMeBot) with: `I allow callmebot to send me messages`
-2. CallMeBot replies with your personal API key.
-3. Store both values in SSM Parameter Store (one-time, never committed to git):
+1. Create a [Meta Business account](https://business.facebook.com/) and a [WhatsApp Business app](https://developers.facebook.com/apps/).
+2. In the app dashboard, go to **WhatsApp > API Setup**, note your **Phone number ID**, and add your personal WhatsApp number as a test recipient.
+3. Generate an access token (temporary tokens last 24 h; for production, create a System User permanent token).
+4. Store credentials in SSM Parameter Store (one-time, never committed to git):
    ```bash
-   aws ssm put-parameter --name /photo-visor/whatsapp/phone  --type String --value "<your number, e.g. 34911234567>"
-   aws ssm put-parameter --name /photo-visor/whatsapp/apikey --type String --value "<key from CallMeBot>"
+   aws ssm put-parameter --name /photo-visor/whatsapp/access_token    --type SecureString --value "<access token>"
+   aws ssm put-parameter --name /photo-visor/whatsapp/phone_number_id --type String       --value "<phone number ID>"
+   aws ssm put-parameter --name /photo-visor/whatsapp/recipient_phone --type String       --value "<your number, e.g. 34717712853>"
    ```
-4. `cdk deploy` once to grant the Lambda `ssm:GetParameter` on `/photo-visor/whatsapp/*`.
+5. `cdk deploy` once to grant the Lambda `ssm:GetParameter` on `/photo-visor/whatsapp/*`.
 
-If these parameters don't exist, the Lambda silently skips notifications (no error).
+If these parameters don't exist, the Lambda silently skips notifications (no error). The free tier includes 1,000 conversations/month. Note: image messages (with collage) require an active 24-hour conversation window — if the recipient hasn't messaged the business number recently, the notification falls back to plain text.
 
 ---
 
