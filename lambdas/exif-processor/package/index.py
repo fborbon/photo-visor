@@ -310,43 +310,74 @@ def _short_album_url(album_display: str, deep_link: str) -> str:
                   ContentType="text/html", CacheControl="no-cache, no-store, must-revalidate")
     return f"{CLOUDFRONT_URL}/{key}"
 
+def _send_album_notification(album_display: str, entry: dict):
+    """Build and send a single WhatsApp notification for an album."""
+    count = entry["pending"]
+    deep_link = f"{CLOUDFRONT_URL}/app/?folder={quote(album_display, safe='')}"
+    short_url = _short_album_url(album_display, deep_link)
+    album_short = album_display.split("/")[-1]
+    if entry.get("is_new"):
+        text = f"📷 New album created: *{album_short}*"
+    else:
+        plural = "s" if count != 1 else ""
+        text = f"🖼️ {count} new photo{plural} added to album: *{album_short}*"
+    collage_url = _build_thumb_collage(entry.get("thumbs", []), album_display)
+    _send_whatsapp(text, image_url=collage_url, link=short_url)
+
 def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None):
     """
-    Send a WhatsApp message when a new album is created, or when new photos
-    land in an existing album. Notifications are coalesced: at most one per
-    album every NOTIFY_COOLDOWN_MIN, with the skipped count and up to
-    NOTIFY_MAX_THUMBS thumbnails folded into the next message.
+    Accumulate photo counts and thumbnails for WhatsApp notifications.
+    Never sends immediately — waits for _flush_pending_notifications (triggered
+    by the phone app after sync completes) or a NOTIFY_COOLDOWN_MIN fallback.
     """
     state = _read_json("index/notify_state.json")
     if not isinstance(state, dict):
         state = {}
     now = datetime.utcnow()
 
-    entry = state.get(album_display) or {"last_notified": None, "pending": 0, "thumbs": [], "is_new": False}
+    entry = state.get(album_display) or {
+        "last_notified": None, "pending": 0, "thumbs": [], "is_new": False, "batch_start": None,
+    }
     if is_new:
         entry["is_new"] = True
     if thumb_key and len(entry.get("thumbs", [])) < NOTIFY_MAX_THUMBS:
         entry.setdefault("thumbs", []).append(thumb_key)
     entry["pending"] = entry.get("pending", 0) + 1
+    if not entry.get("batch_start"):
+        entry["batch_start"] = now.isoformat()
 
-    last = datetime.fromisoformat(entry["last_notified"]) if entry.get("last_notified") else None
-    if last is None or (now - last).total_seconds() >= NOTIFY_COOLDOWN_MIN * 60:
-        count  = entry["pending"]
-        deep_link = f"{CLOUDFRONT_URL}/app/?folder={quote(album_display, safe='')}"
-        short_url = _short_album_url(album_display, deep_link)
-        album_short = album_display.split("/")[-1]
-        if entry.get("is_new"):
-            text = f"📷 New album created: *{album_short}*"
-        else:
-            plural = "s" if count != 1 else ""
-            text = f"🖼️ {count} new photo{plural} added to album: *{album_short}*"
-
-        collage_url = _build_thumb_collage(entry.get("thumbs", []), album_display)
-        _send_whatsapp(text, image_url=collage_url, link=short_url)
-        entry = {"last_notified": now.isoformat(), "pending": 0, "thumbs": [], "is_new": False}
+    # Fallback: if batch has been pending longer than NOTIFY_COOLDOWN_MIN, send anyway
+    # (covers cases where the phone app didn't send the flush marker).
+    batch_start = datetime.fromisoformat(entry["batch_start"])
+    if (now - batch_start).total_seconds() >= NOTIFY_COOLDOWN_MIN * 60:
+        last = datetime.fromisoformat(entry["last_notified"]) if entry.get("last_notified") else None
+        if last is None or (now - last).total_seconds() >= NOTIFY_COOLDOWN_MIN * 60:
+            _send_album_notification(album_display, entry)
+            entry = {"last_notified": now.isoformat(), "pending": 0, "thumbs": [], "is_new": False, "batch_start": None}
 
     state[album_display] = entry
     _write_json("index/notify_state.json", state, "no-cache, no-store, must-revalidate")
+
+def _flush_pending_notifications():
+    """Send WhatsApp notifications for all albums with pending photos.
+    Called when the phone app writes the flush marker after sync completes."""
+    state = _read_json("index/notify_state.json")
+    if not isinstance(state, dict):
+        return
+    now = datetime.utcnow()
+    changed = False
+    for album_display in list(state.keys()):
+        entry = state[album_display]
+        if entry.get("pending", 0) > 0 and entry.get("batch_start"):
+            try:
+                _send_album_notification(album_display, entry)
+            except Exception as e:
+                print(f"Flush notify error ({album_display}): {e}")
+                continue
+            state[album_display] = {"last_notified": now.isoformat(), "pending": 0, "thumbs": [], "is_new": False, "batch_start": None}
+            changed = True
+    if changed:
+        _write_json("index/notify_state.json", state, "no-cache, no-store, must-revalidate")
 
 def _update_path_tags_and_general(album_path: str, hash_str: str, photo_entry: dict):
     """Update index/path_tags.json and index/general/*.json for a Camera/ album upload."""
@@ -409,6 +440,16 @@ def handler(event, context):
     return {"statusCode": 200}
 
 def _process(key: str):
+    # Flush marker written by the phone app after sync completes
+    if key == "photos/_notify_flush.json":
+        print("Flush marker received — sending pending notifications")
+        _flush_pending_notifications()
+        try:
+            s3.delete_object(Bucket=BUCKET, Key=key)
+        except Exception:
+            pass
+        return
+
     # key = photos/ab/abc123...jpg
     parts    = key.split("/")
     filename = parts[-1]

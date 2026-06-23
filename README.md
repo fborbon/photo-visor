@@ -221,8 +221,10 @@ Results are cached in SQLite to respect the OSM fair-use policy (1.1 s delay bet
 
 When a phone-sync or web upload tags a photo with a `Camera/...` album path, the Lambda sends a WhatsApp message via the [Meta WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) (free tier: 1,000 conversations/month):
 
-- **New album created** → immediate message: `📷 New album created: Camera/...`
-- **New photos in an existing album** → coalesced message: `🖼️ N new photo(s) added to album: Camera/...`, at most once per `NOTIFY_COOLDOWN_MIN` (default 10 min) — extra uploads within the cooldown are folded into the next message's count.
+- **New album created** → `📷 New album created: *Album Name*`
+- **New photos in an existing album** → `🖼️ N new photo(s) added to album: *Album Name*`
+
+Notifications are **sync-aware**: during a phone sync the Lambda accumulates photo counts and thumbnails without sending. When the sync finishes, the phone app writes a flush marker (`photos/_notify_flush.json`) to S3, which triggers the Lambda to send all pending notifications at once — with the correct total count and a 3-photo collage. A 10-minute fallback ensures delivery even if the flush marker is lost.
 
 Each notification is sent as a forwardable WhatsApp **image message**: a collage of up to `NOTIFY_MAX_THUMBS` (3) thumbnails side-by-side (stored under `thumbs/notify/` with ASCII-safe keys) with a caption containing the bold album name and a short redirect URL (`fotos.forwardforecasting.eu/a/<slug>.html`). The redirect page shows a spinning hourglass animation before opening the album deep link. Without thumbnails, a plain text message is sent instead.
 

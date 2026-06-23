@@ -541,6 +541,14 @@ export function useSync(
         patch({ message: 'Updating photo index…' });
         try { await updateSysIndex(s3, sysTagPhotos); } catch { /* non-fatal */ }
         try { await updatePathTagsAndGeneralIndex(s3, sysTagPhotos); } catch { /* non-fatal */ }
+        // Signal the Lambda to send pending WhatsApp notifications now that sync is done
+        try {
+          await s3.send(new PutObjectCommand({
+            Bucket: config.bucketName, Key: 'photos/_notify_flush.json',
+            Body: JSON.stringify({ ts: new Date().toISOString() }),
+            ContentType: 'application/json',
+          }));
+        } catch { /* non-fatal */ }
       }
       patch({ phase: 'done', message: '' });
 
