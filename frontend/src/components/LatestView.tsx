@@ -57,7 +57,7 @@ export default function LatestView() {
 
   // ── Added subtab ──────────────────────────────────────────────────
   const { data: recentIndex, loading: recentLoading } = useIndex<RecentIndex>(
-    subtab === 'added' ? 'index/recent.json' : null
+    subtab === 'added' || subtab === 'comments' ? 'index/recent.json' : null
   );
 
   // Read the most-recent 100 records saved by useSync (refreshes on each tab visit)
@@ -67,17 +67,37 @@ export default function LatestView() {
   });
 
   // ── Shared photo lookup (used by both Added and Comments) ──────────
+  const commentHashes = useMemo(() => {
+    const hashes = new Set<string>();
+    for (const h of Object.keys(ctx.sharedCommentTimes)) hashes.add(h);
+    for (const h of Object.keys(ctx.commentTimes)) hashes.add(h);
+    return hashes;
+  }, [ctx.sharedCommentTimes, ctx.commentTimes]);
+
   const photoByHash = useMemo((): Record<string, PhotoEntry> => {
     const map: Record<string, PhotoEntry> = {};
     for (const e of Object.values(ctx.tags))       for (const p of e.photos) map[p.hash] = p;
     for (const e of Object.values(ctx.sharedTags)) for (const p of e.photos) map[p.hash] = p;
     if (recentIndex) for (const p of recentIndex.photos) map[p.hash] = p;
+    // For commented photos not found in tags/recent, construct a stub with the
+    // standard thumb path so thumbnails display in the Comments subtab.
+    // s3_key is null because we don't know the actual extension (.heic/.jpg).
+    for (const h of commentHashes) {
+      if (!map[h]) {
+        map[h] = {
+          hash: h, s3_key: null,
+          thumb: `thumbs/${h.slice(0, 2)}/${h}.jpg`,
+          dt: null, lat: null, lng: null, w: null, h: null,
+        };
+      }
+    }
     return map;
-  }, [ctx.tags, ctx.sharedTags, recentIndex]);
+  }, [ctx.tags, ctx.sharedTags, recentIndex, commentHashes]);
 
   const clearedAddedMs = clearedAdded ? Date.parse(clearedAdded) : 0;
 
-  // Merge localStorage sync log + recent.json, deduplicated, newest first, cap 100
+  // Merge localStorage sync log + recent.json, deduplicated, newest first.
+  // Always show at least 30 photos from recent.json even if the user has cleared.
   const addedPhotos = useMemo((): PhotoEntry[] => {
     const seen  = new Set<string>();
     const items: { photo: PhotoEntry; sort: string }[] = [];
@@ -105,6 +125,16 @@ export default function LatestView() {
       }
     }
 
+    // Fallback: if filtered list is empty, show newest 30 from recent.json
+    if (items.length === 0 && recentIndex) {
+      for (const p of recentIndex.photos.slice(0, 30)) {
+        if (!seen.has(p.hash)) {
+          seen.add(p.hash);
+          items.push({ photo: p, sort: p.addedAt });
+        }
+      }
+    }
+
     return items
       .sort((a, b) => b.sort.localeCompare(a.sort))
       .slice(0, 100)
@@ -126,14 +156,27 @@ export default function LatestView() {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   // ── Comments subtab ───────────────────────────────────────────────
-  const commentItems = Object.entries(ctx.commentTimes)
-    .map(([hash, updatedAt]) => ({
-      hash, updatedAt,
-      text:  ctx.getComment(hash),
-      photo: photoByHash[hash] ?? null,
-    }))
-    .filter(c => c.text && (!clearedComments || c.updatedAt > clearedComments))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const commentItems = useMemo(() => {
+    const seen = new Set<string>();
+    const items: { hash: string; updatedAt: string; text: string; photo: PhotoEntry | null; shared: boolean }[] = [];
+    for (const [hash, updatedAt] of Object.entries(ctx.sharedCommentTimes)) {
+      if (seen.has(hash)) continue;
+      seen.add(hash);
+      const text = ctx.getComment(hash);
+      if (!text) continue;
+      if (clearedComments && updatedAt <= clearedComments) continue;
+      items.push({ hash, updatedAt, text, photo: photoByHash[hash] ?? null, shared: true });
+    }
+    for (const [hash, updatedAt] of Object.entries(ctx.commentTimes)) {
+      if (seen.has(hash)) continue;
+      seen.add(hash);
+      const text = ctx.getComment(hash);
+      if (!text) continue;
+      if (clearedComments && updatedAt <= clearedComments) continue;
+      items.push({ hash, updatedAt, text, photo: photoByHash[hash] ?? null, shared: false });
+    }
+    return items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }, [ctx.commentTimes, ctx.sharedCommentTimes, ctx.getComment, photoByHash, clearedComments]);
 
   // Navigable list of photos for the comments modal
   const commentPhotos = commentItems.map(c => c.photo).filter(Boolean) as PhotoEntry[];
@@ -174,7 +217,7 @@ export default function LatestView() {
             <p className="panel-loading">{tr.noRecentPhotos}</p>
           )}
           {addedPhotos.length > 0 && (
-            <PhotoGrid photos={addedPhotos} title={tr.latestAdded} navMode="latest" />
+            <PhotoGrid photos={addedPhotos} title={tr.latestAdded} navMode="latest" defaultSort="newest" />
           )}
         </div>
       )}
@@ -298,7 +341,8 @@ export default function LatestView() {
       {commentPhoto && (
         <AddCommentModal
           existing={ctx.getComment(commentPhoto.hash)}
-          onSave={text => { ctx.setComment(commentPhoto.hash, text); setCommentPhoto(null); }}
+          existingShared={ctx.getCommentShared(commentPhoto.hash)}
+          onSave={(text, shared) => { ctx.setComment(commentPhoto.hash, text, shared); setCommentPhoto(null); }}
           onClose={() => setCommentPhoto(null)}
         />
       )}

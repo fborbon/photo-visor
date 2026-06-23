@@ -79,6 +79,7 @@ const t = {
     editComment:      'Edit Comment',
     commentPlaceholder: 'Write a comment…',
     saveComment:      'Save',
+    shareComment:     'Share with family',
 
     // Multi-select
     // Upload
@@ -241,6 +242,7 @@ const t = {
     editComment:      'Editar comentario',
     commentPlaceholder: 'Escribe un comentario…',
     saveComment:      'Guardar',
+    shareComment:     'Compartir con la familia',
 
     tabUpload:        'Subir',
     tabLatest:        'Recientes',

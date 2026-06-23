@@ -113,7 +113,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
 
   const { navigate } = useNav();
   const { isOwner, isPhotoPrivate, isAlbumPrivate, togglePhoto } = usePrivacy();
-  const { addPhotoToTag, getComment, setComment, tags, sharedTags, systemTagIndex } = useTags();
+  const { addPhotoToTag, getComment, getCommentShared, setComment, tags, sharedTags, systemTagIndex } = useTags();
   const { trashPhotos, isTrashed } = useTrash();
   const { tr } = useLang();
   const { trackEvent } = useAnalytics();
@@ -494,7 +494,8 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
       {commentPhoto && (
         <AddCommentModal
           existing={getComment(commentPhoto.hash)}
-          onSave={text => setComment(commentPhoto.hash, text)}
+          existingShared={getCommentShared(commentPhoto.hash)}
+          onSave={(text, shared) => setComment(commentPhoto.hash, text, shared)}
           onClose={() => setCommentPhoto(null)}
         />
       )}

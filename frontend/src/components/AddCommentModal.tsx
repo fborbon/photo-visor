@@ -3,13 +3,15 @@ import { useLang } from '../context/LangContext';
 
 interface Props {
   existing: string;
-  onSave:   (text: string) => void;
+  existingShared: boolean;
+  onSave:   (text: string, shared: boolean) => void;
   onClose:  () => void;
 }
 
-export default function AddCommentModal({ existing, onSave, onClose }: Props) {
+export default function AddCommentModal({ existing, existingShared, onSave, onClose }: Props) {
   const { tr } = useLang();
   const [value, setValue] = useState(existing);
+  const [isShared, setIsShared] = useState(existing ? existingShared : true);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -23,7 +25,7 @@ export default function AddCommentModal({ existing, onSave, onClose }: Props) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const save = () => { onSave(value); onClose(); };
+  const save = () => { onSave(value, isShared); onClose(); };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -38,6 +40,18 @@ export default function AddCommentModal({ existing, onSave, onClose }: Props) {
           onChange={e => setValue(e.target.value)}
           rows={4}
         />
+
+        <label className="tag-share-label">
+          <input
+            type="checkbox"
+            checked={isShared}
+            onChange={e => setIsShared(e.target.checked)}
+          />
+          <span>👨‍👩‍👧 {tr.shareComment}</span>
+          <span className="tag-share-hint">
+            {isShared ? tr.sharedTag : tr.privateTag}
+          </span>
+        </label>
 
         <div className="comment-modal-actions">
           <button className="add-tag-cancel" onClick={onClose}>{tr.cancel}</button>

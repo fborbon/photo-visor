@@ -89,9 +89,17 @@ export interface SharedTagEntry extends TagEntry {
   ownerEmail: string;
 }
 
+export interface SharedComment {
+  text:       string;
+  ownerKey:   string;
+  ownerEmail: string;
+}
+
 export interface SharedTags {
-  updated: string;
-  tags:    Record<string, SharedTagEntry>;
+  updated:      string;
+  tags:         Record<string, SharedTagEntry>;
+  comments:     Record<string, SharedComment>;
+  commentTimes: Record<string, string>;
 }
 
 export interface SystemTagMeta {

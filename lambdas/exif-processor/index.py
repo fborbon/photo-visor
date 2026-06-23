@@ -218,9 +218,8 @@ def _get_whatsapp_creds() -> tuple[str | None, str | None, str | None]:
     return _whatsapp_creds
 
 def _send_whatsapp(text: str, image_url: str | None = None, link: str | None = None):
-    """Send a WhatsApp message via Meta Cloud API. Sends a single interactive
-    message with collage image header + body text + 'Go to album' URL button
-    when all parts are available; degrades gracefully to simpler formats."""
+    """Send a WhatsApp message via Meta Cloud API. Uses a regular image message
+    (with caption) so it can be forwarded/starred. Falls back to plain text."""
     token, phone_id, recipient = _get_whatsapp_creds()
     if not token or not phone_id or not recipient:
         return
@@ -229,36 +228,20 @@ def _send_whatsapp(text: str, image_url: str | None = None, link: str | None = N
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
-    if link:
-        interactive = {
-            "type": "cta_url",
-            "body": {"text": text},
-            "action": {
-                "name": "cta_url",
-                "parameters": {"display_text": "Go to album", "url": link},
-            },
-        }
-        if image_url:
-            interactive["header"] = {"type": "image", "image": {"link": image_url}}
-        payload = json.dumps({
-            "messaging_product": "whatsapp",
-            "to": recipient,
-            "type": "interactive",
-            "interactive": interactive,
-        })
-    elif image_url:
+    caption = f"{text}\n\n{link}" if link else text
+    if image_url:
         payload = json.dumps({
             "messaging_product": "whatsapp",
             "to": recipient,
             "type": "image",
-            "image": {"link": image_url, "caption": text},
+            "image": {"link": image_url, "caption": caption},
         })
     else:
         payload = json.dumps({
             "messaging_product": "whatsapp",
             "to": recipient,
             "type": "text",
-            "text": {"body": text},
+            "text": {"body": caption},
         })
     try:
         req = urllib.request.Request(api_url, data=payload.encode(), headers=headers, method="POST")
@@ -302,6 +285,31 @@ def _build_thumb_collage(thumb_keys: list[str], album_display: str) -> str | Non
                   CacheControl="public, max-age=2592000, immutable")
     return f"{CLOUDFRONT_URL}/{key}"
 
+def _short_album_url(album_display: str, deep_link: str) -> str:
+    """Publish a tiny HTML redirect at a/SLUG so the WhatsApp caption stays clean."""
+    slug = re.sub(r"[^a-zA-Z0-9_\-]", "_", album_display.split("/")[-1].lower())
+    album_short = album_display.split("/")[-1]
+    key = f"a/{slug}.html"
+    html = (
+        '<!DOCTYPE html><html><head>'
+        f'<meta http-equiv="refresh" content="1;url={deep_link}"/>'
+        '<style>'
+        'body{margin:0;height:100vh;display:flex;flex-direction:column;'
+        'align-items:center;justify-content:center;background:#1a1a2e;'
+        'font-family:system-ui,sans-serif;color:#e0e0e0}'
+        '.emoji{font-size:80px;animation:spin 2s linear infinite}'
+        '@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}'
+        'p{font-size:18px;margin-top:20px;opacity:.7}'
+        '</style>'
+        '</head><body>'
+        f'<div class="emoji">&#9203;</div>'
+        f'<p>Opening *{album_short}*...</p>'
+        '</body></html>'
+    )
+    s3.put_object(Bucket=BUCKET, Key=key, Body=html.encode(),
+                  ContentType="text/html", CacheControl="no-cache, no-store, must-revalidate")
+    return f"{CLOUDFRONT_URL}/{key}"
+
 def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None):
     """
     Send a WhatsApp message when a new album is created, or when new photos
@@ -324,15 +332,17 @@ def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None
     last = datetime.fromisoformat(entry["last_notified"]) if entry.get("last_notified") else None
     if last is None or (now - last).total_seconds() >= NOTIFY_COOLDOWN_MIN * 60:
         count  = entry["pending"]
-        link   = f"{CLOUDFRONT_URL}/app/?folder={quote(album_display, safe='')}"
+        deep_link = f"{CLOUDFRONT_URL}/app/?folder={quote(album_display, safe='')}"
+        short_url = _short_album_url(album_display, deep_link)
+        album_short = album_display.split("/")[-1]
         if entry.get("is_new"):
-            text = f"📷 New album created: {album_display}"
+            text = f"📷 New album created: *{album_short}*"
         else:
             plural = "s" if count != 1 else ""
-            text = f"🖼️ {count} new photo{plural} added to album: {album_display}"
+            text = f"🖼️ {count} new photo{plural} added to album: *{album_short}*"
 
         collage_url = _build_thumb_collage(entry.get("thumbs", []), album_display)
-        _send_whatsapp(text, image_url=collage_url, link=link)
+        _send_whatsapp(text, image_url=collage_url, link=short_url)
         entry = {"last_notified": now.isoformat(), "pending": 0, "thumbs": [], "is_new": False}
 
     state[album_display] = entry
@@ -494,6 +504,24 @@ def _process(key: str):
                              "count": 1, "lat": lat, "lng": lng})
             summary["locations"] = locs
         _write_json("index/summary.json", summary)
+
+    # Append to recent.json so all users see newly synced photos in the Latest tab
+    if album_path:
+        try:
+            recent = _read_json("index/recent.json")
+            if not isinstance(recent, dict):
+                recent = {"updated": "", "photos": []}
+            recent_photos = recent.get("photos", [])
+            if not any(p.get("hash") == hash_str for p in recent_photos):
+                recent_entry = {**photo_entry, "addedAt": datetime.utcnow().isoformat()}
+                recent_photos.append(recent_entry)
+                recent_photos.sort(key=lambda p: p.get("addedAt", ""), reverse=True)
+                recent_photos = recent_photos[:200]
+                recent["photos"] = recent_photos
+                recent["updated"] = datetime.utcnow().isoformat()
+                _write_json("index/recent.json", recent, "no-cache, no-store, must-revalidate")
+        except Exception as e:
+            print(f"recent.json update error: {e}")
 
     # Update path tree and general album index if uploaded via phone sync with a Camera/ force path
     if album_path and album_path.startswith("Camera/"):

@@ -224,9 +224,15 @@ When a phone-sync or web upload tags a photo with a `Camera/...` album path, the
 - **New album created** → immediate message: `📷 New album created: Camera/...`
 - **New photos in an existing album** → coalesced message: `🖼️ N new photo(s) added to album: Camera/...`, at most once per `NOTIFY_COOLDOWN_MIN` (default 10 min) — extra uploads within the cooldown are folded into the next message's count.
 
-Each notification is sent as a single interactive WhatsApp message with up to three parts: a **collage image header** (up to `NOTIFY_MAX_THUMBS` thumbnails side-by-side, stored under `thumbs/notify/` with ASCII-safe keys), **body text** with album name and action, and a **"Go to album" button** linking to `https://fotos.forwardforecasting.eu/app/?folder=<album path>`. The message degrades gracefully: without thumbnails, the button message is sent without an image header; without a link, a plain text message is sent.
+Each notification is sent as a forwardable WhatsApp **image message**: a collage of up to `NOTIFY_MAX_THUMBS` (3) thumbnails side-by-side (stored under `thumbs/notify/` with ASCII-safe keys) with a caption containing the bold album name and a short redirect URL (`fotos.forwardforecasting.eu/a/<slug>.html`). The redirect page shows a spinning hourglass animation before opening the album deep link. Without thumbnails, a plain text message is sent instead.
+
+The Lambda also appends every phone-synced photo to `index/recent.json` (capped at 200, newest first) so all users see recently added photos in the Latest tab — not just the device that performed the sync.
 
 State (including per-album pending counts and queued thumbnail keys) is tracked in `index/notify_state.json`. Bulk-ingest uploads (no `album-path` metadata) never trigger notifications — see [3.1](#31-bulk-ingest-scriptsbulk-ingestpy). Credentials live in SSM Parameter Store (never in this repo); see [Environment / Secrets](#environment--secrets) for setup.
+
+### 3.7 Shared Comments
+
+Comments can be shared across all family members or kept private. The comment modal includes a "Share with family" checkbox (default: checked for new comments). Shared comments are stored in `index/tags/shared.json` alongside shared tags; private comments remain in each user's personal tag file (`index/tags/{email}.json`). Both `getComment` and the Latest > Comments subtab merge shared and private comments, with shared taking precedence.
 
 ---
 

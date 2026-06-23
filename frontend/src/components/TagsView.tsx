@@ -569,7 +569,7 @@ export default function TagsView() {
             {entry.photos.length > 0
               ? (
                 <>
-                  <PhotoGrid photos={entry.photos} navMode="tags" />
+                  <PhotoGrid photos={entry.photos} navMode="tags" defaultSort="newest" />
                   <div className="back-to-top-wrap">
                     <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
                   </div>

@@ -228,7 +228,8 @@ export default function SlotMachineView() {
       {commentPhoto && (
         <AddCommentModal
           existing={tagsCtx.getComment(commentPhoto.hash)}
-          onSave={text => { tagsCtx.setComment(commentPhoto.hash, text); setCommentPhoto(null); }}
+          existingShared={tagsCtx.getCommentShared(commentPhoto.hash)}
+          onSave={(text, shared) => { tagsCtx.setComment(commentPhoto.hash, text, shared); setCommentPhoto(null); }}
           onClose={() => setCommentPhoto(null)}
         />
       )}

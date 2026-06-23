@@ -4,7 +4,7 @@ import {
 import { fetchAuthSession, getCurrentUser } from 'aws-amplify/auth';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import config from '../config';
-import { PhotoEntry, AlbumRef, TagEntry, UserTags, SharedTagEntry, SharedTags, SystemTagIndex } from '../types';
+import { PhotoEntry, AlbumRef, TagEntry, UserTags, SharedTagEntry, SharedTags, SharedComment, SystemTagIndex } from '../types';
 
 interface TagsCtx {
   tags:            Record<string, TagEntry>;
@@ -20,9 +20,11 @@ interface TagsCtx {
   removeAlbumTag:  (albumKey: string, tagName: string, shared: boolean) => Promise<void>;
   deleteTag:       (tagName: string,  shared: boolean) => Promise<void>;
 
-  getComment:      (hash: string) => string;
-  setComment:      (hash: string, text: string) => Promise<void>;
-  commentTimes:    Record<string, string>;
+  getComment:        (hash: string) => string;
+  getCommentShared:  (hash: string) => boolean;
+  setComment:        (hash: string, text: string, shared: boolean) => Promise<void>;
+  commentTimes:      Record<string, string>;
+  sharedCommentTimes: Record<string, string>;
 
   ownerKey:        string;
   isMySharedTag:   (tagName: string) => boolean;
@@ -36,15 +38,15 @@ const TagsContext = createContext<TagsCtx>({
   addPhotoToTag: async () => {}, addAlbumToTag:  async () => {},
   removePhotoTag: async () => {}, removeAlbumTag: async () => {},
   deleteTag:   async () => {},
-  getComment:  () => '', setComment: async () => {},
-  commentTimes: {},
+  getComment:  () => '', getCommentShared: () => false, setComment: async () => {},
+  commentTimes: {}, sharedCommentTimes: {},
   ownerKey: '', isMySharedTag: () => false,
 });
 
 const SHARED_KEY     = 'index/tags/shared.json';
 const SYSTEM_IDX_KEY = 'index/tags/system.json';
 const emptyPrivate: UserTags      = { updated: '', tags: {}, comments: {}, commentTimes: {} };
-const emptyShared:  SharedTags    = { updated: '', tags: {} };
+const emptyShared:  SharedTags    = { updated: '', tags: {}, comments: {}, commentTimes: {} };
 
 // ── localStorage keys ──────────────────────────────────────────────
 function lsPrivateKey(ownerKey: string) { return 'pv_tags_' + ownerKey; }
@@ -139,15 +141,21 @@ export function TagsProvider({ children }: { children: ReactNode }) {
 
   // ── Load shared tags ───────────────────────────────────────────────
   useEffect(() => {
+    const normShared = (d: SharedTags): SharedTags => ({
+      ...d,
+      comments:     d.comments     ?? {},
+      commentTimes: d.commentTimes ?? {},
+    });
     const cached = lsGet<SharedTags>(LS_SHARED_KEY);
-    if (cached) setSharedData(cached);
+    if (cached) setSharedData(normShared(cached));
 
     fetch(config.cloudFrontUrl + '/' + SHARED_KEY + '?nc=' + Date.now())
       .then(r => (r.ok ? r.json() as Promise<SharedTags> : null))
       .then((remote: SharedTags | null) => {
         if (!remote) return;
-        setSharedData(remote);
-        lsSet(LS_SHARED_KEY, remote);
+        const norm = normShared(remote);
+        setSharedData(norm);
+        lsSet(LS_SHARED_KEY, norm);
       })
       .catch(() => { /* keep cached */ });
   }, []);
@@ -260,19 +268,48 @@ export function TagsProvider({ children }: { children: ReactNode }) {
   }, [privateData, sharedData, persistPrivate, persistShared]);
 
   // ── Comments ───────────────────────────────────────────────────────
-  const getComment = useCallback((hash: string) =>
-    privateData.comments[hash] ?? '', [privateData.comments]);
+  const getComment = useCallback((hash: string) => {
+    const sc = sharedData.comments[hash];
+    if (sc) return sc.text;
+    return privateData.comments[hash] ?? '';
+  }, [privateData.comments, sharedData.comments]);
 
-  const setComment = useCallback(async (hash: string, text: string) => {
+  const getCommentShared = useCallback((hash: string) =>
+    hash in sharedData.comments, [sharedData.comments]);
+
+  const setComment = useCallback(async (hash: string, text: string, shared: boolean) => {
     const now = new Date().toISOString();
-    const comments = text.trim()
-      ? { ...privateData.comments, [hash]: text.trim() }
-      : Object.fromEntries(Object.entries(privateData.comments).filter(([k]) => k !== hash));
-    const commentTimes = text.trim()
-      ? { ...privateData.commentTimes, [hash]: now }
-      : Object.fromEntries(Object.entries(privateData.commentTimes).filter(([k]) => k !== hash));
-    await persistPrivate({ ...privateData, updated: now, comments, commentTimes });
-  }, [privateData, persistPrivate]);
+    const trimmed = text.trim();
+    if (shared) {
+      const comments = trimmed
+        ? { ...sharedData.comments, [hash]: { text: trimmed, ownerKey: myOwnerKey, ownerEmail: myEmail } as SharedComment }
+        : Object.fromEntries(Object.entries(sharedData.comments).filter(([k]) => k !== hash));
+      const commentTimes = trimmed
+        ? { ...sharedData.commentTimes, [hash]: now }
+        : Object.fromEntries(Object.entries(sharedData.commentTimes).filter(([k]) => k !== hash));
+      // Remove from private if moving to shared
+      const privComments = Object.fromEntries(Object.entries(privateData.comments).filter(([k]) => k !== hash));
+      const privCommentTimes = Object.fromEntries(Object.entries(privateData.commentTimes).filter(([k]) => k !== hash));
+      if (privComments !== privateData.comments) {
+        await persistPrivate({ ...privateData, updated: now, comments: privComments, commentTimes: privCommentTimes });
+      }
+      await persistShared({ ...sharedData, updated: now, comments, commentTimes });
+    } else {
+      const comments = trimmed
+        ? { ...privateData.comments, [hash]: trimmed }
+        : Object.fromEntries(Object.entries(privateData.comments).filter(([k]) => k !== hash));
+      const commentTimes = trimmed
+        ? { ...privateData.commentTimes, [hash]: now }
+        : Object.fromEntries(Object.entries(privateData.commentTimes).filter(([k]) => k !== hash));
+      // Remove from shared if moving to private
+      const sharedComments = Object.fromEntries(Object.entries(sharedData.comments).filter(([k]) => k !== hash));
+      const sharedCommentTimes = Object.fromEntries(Object.entries(sharedData.commentTimes).filter(([k]) => k !== hash));
+      if (Object.keys(sharedComments).length !== Object.keys(sharedData.comments).length) {
+        await persistShared({ ...sharedData, updated: now, comments: sharedComments, commentTimes: sharedCommentTimes });
+      }
+      await persistPrivate({ ...privateData, updated: now, comments, commentTimes });
+    }
+  }, [privateData, sharedData, persistPrivate, persistShared, myOwnerKey, myEmail]);
 
   const isMySharedTag = useCallback((tagName: string) => {
     const e = sharedData.tags[tagName];
@@ -287,8 +324,9 @@ export function TagsProvider({ children }: { children: ReactNode }) {
       sharedTagNames: Object.keys(sharedData.tags).sort(),
       addPhotoToTag, addAlbumToTag,
       removePhotoTag, removeAlbumTag, deleteTag,
-      getComment, setComment,
+      getComment, getCommentShared, setComment,
       commentTimes: privateData.commentTimes,
+      sharedCommentTimes: sharedData.commentTimes,
       ownerKey: myOwnerKey,
       isMySharedTag,
       systemTagIndex: systemIndex,
