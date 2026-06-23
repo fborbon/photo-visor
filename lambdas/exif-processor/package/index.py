@@ -308,7 +308,14 @@ def _short_album_url(album_display: str, deep_link: str) -> str:
     )
     s3.put_object(Bucket=BUCKET, Key=key, Body=html.encode(),
                   ContentType="text/html", CacheControl="no-cache, no-store, must-revalidate")
-    return f"{CLOUDFRONT_URL}/{key}"
+    return f"{CLOUDFRONT_URL}/{key}?v={datetime.utcnow().strftime('%Y%m%d%H%M')}"
+
+def _pick_evenly(items: list, n: int) -> list:
+    """Pick n items evenly spaced from the list."""
+    if len(items) <= n:
+        return items
+    step = len(items) / n
+    return [items[int(i * step)] for i in range(n)]
 
 def _send_album_notification(album_display: str, entry: dict):
     """Build and send a single WhatsApp notification for an album."""
@@ -321,7 +328,8 @@ def _send_album_notification(album_display: str, entry: dict):
     else:
         plural = "s" if count != 1 else ""
         text = f"🖼️ {count} new photo{plural} added to album: *{album_short}*"
-    collage_url = _build_thumb_collage(entry.get("thumbs", []), album_display)
+    selected_thumbs = _pick_evenly(entry.get("thumbs", []), NOTIFY_MAX_THUMBS)
+    collage_url = _build_thumb_collage(selected_thumbs, album_display)
     _send_whatsapp(text, image_url=collage_url, link=short_url)
 
 def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None):
@@ -340,7 +348,7 @@ def _notify_album_update(album_display: str, is_new: bool, thumb_key: str | None
     }
     if is_new:
         entry["is_new"] = True
-    if thumb_key and len(entry.get("thumbs", [])) < NOTIFY_MAX_THUMBS:
+    if thumb_key:
         entry.setdefault("thumbs", []).append(thumb_key)
     entry["pending"] = entry.get("pending", 0) + 1
     if not entry.get("batch_start"):
