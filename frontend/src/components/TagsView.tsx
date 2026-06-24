@@ -218,6 +218,8 @@ export default function TagsView() {
 
   // Resizable panel
   const [railWidth, setRailWidth] = useState(DEFAULT_RAIL);
+  const [railVh, setRailVh]       = useState(40);
+  const railDragRef = useRef<{ startY: number; startVh: number } | null>(null);
   const mainRef       = useRef<HTMLDivElement>(null);
   const dragRef       = useRef(false);
   const startXRef     = useRef(0);
@@ -361,7 +363,7 @@ export default function TagsView() {
     <div className="tags-layout">
 
       {/* ── Tag rail ─────────────────────────────────────── */}
-      <aside className="tags-rail" style={isMobile ? undefined : { width: railWidth }}>
+      <aside className="tags-rail" style={isMobile ? { height: railVh + 'vh', maxHeight: railVh + 'vh' } : { width: railWidth }}>
 
         {/* ══ Favorites ══ */}
         {favorites.size > 0 && (
@@ -509,7 +511,26 @@ export default function TagsView() {
       </aside>
 
       {/* ── Resize handle ─────────────────────────────────── */}
-      <div className="tags-resize-handle" onMouseDown={onDragStart} />
+      {isMobile ? (
+        <div
+          className="tags-resize-handle-mobile"
+          onPointerDown={e => {
+            railDragRef.current = { startY: e.clientY, startVh: railVh };
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+            e.preventDefault();
+          }}
+          onPointerMove={e => {
+            if (!railDragRef.current) return;
+            const dy = e.clientY - railDragRef.current.startY;
+            const dvh = (dy / window.innerHeight) * 100;
+            setRailVh(Math.max(15, Math.min(75, railDragRef.current.startVh + dvh)));
+          }}
+          onPointerUp={() => { railDragRef.current = null; }}
+          onPointerCancel={() => { railDragRef.current = null; }}
+        />
+      ) : (
+        <div className="tags-resize-handle" onMouseDown={onDragStart} />
+      )}
 
       {/* ── Tag content ──────────────────────────────────── */}
       <div className="tags-main" ref={mainRef}>

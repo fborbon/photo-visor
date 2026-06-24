@@ -110,6 +110,8 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   const [addTagTarget, setAddTagTarget] = useState<PhotoEntry[] | null>(null);
   const [commentPhoto, setCommentPhoto] = useState<PhotoEntry | null>(null);
   const [sortOrder,    setSortOrder]    = useState<SortOrder>(defaultSort);
+  const [mobileNavIdx, setMobileNavIdx] = useState<number | null>(null);
+  const longPressTimer2 = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { navigate } = useNav();
   const { isOwner, isPhotoPrivate, isAlbumPrivate, togglePhoto } = usePrivacy();
@@ -179,9 +181,12 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   };
 
   // ── Context menu ─────────────────────────────────────────────────
+  const isTouchDevice = 'ontouchstart' in window;
   const handleContextMenu = (e: React.MouseEvent, idx: number) => {
     e.preventDefault();
-    // If the right-clicked photo is part of an active selection, act on all selected
+    // On touch devices, the 2s/4s long-press timers handle nav icons and menu.
+    // Suppress the browser's early (~500ms) contextmenu to avoid conflict.
+    if (isTouchDevice) return;
     const forSelection = hasSelection && selection.has(idx);
     setMenu({
       x: e.clientX, y: e.clientY,
@@ -194,36 +199,63 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
     }
   };
 
-  // ── Long-press (mobile) ──────────────────────────────────────────
+  // ── Long-press (mobile): 2–4s → nav icons, >4s → context menu ───
+  // Hold 2s: nav icons appear and persist after lifting finger.
+  // Hold 4s: nav icons hide, context menu appears.
+  const clearTimers = () => {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+    if (longPressTimer2.current) { clearTimeout(longPressTimer2.current); longPressTimer2.current = null; }
+  };
+
+  const touchIdxRef = useRef<number | null>(null);
+  const touchStartTime = useRef(0);
+
   const handleTouchStart = (idx: number) => (e: React.TouchEvent) => {
     longPressDidFire.current = false;
+    touchIdxRef.current = idx;
+    touchStartTime.current = Date.now();
+    if (mobileNavIdx !== null && mobileNavIdx !== idx) setMobileNavIdx(null);
     const t = e.touches[0];
     longPressPos.current = { x: t.clientX, y: t.clientY };
+    e.preventDefault();
     longPressTimer.current = setTimeout(() => {
       longPressTimer.current = null;
       if (!longPressPos.current) return;
       longPressDidFire.current = true;
+      setMobileNavIdx(idx);
+    }, 2000);
+    longPressTimer2.current = setTimeout(() => {
+      longPressTimer2.current = null;
+      if (!longPressPos.current) return;
+      longPressDidFire.current = true;
+      setMobileNavIdx(null);
       const { x, y } = longPressPos.current;
       const forSelection = hasSelection && selection.has(idx);
       setMenu({ x, y, forSelection, singlePhoto: forSelection ? null : visible[idx] });
       if (!forSelection) { setSelection(new Set()); lastClickedRef.current = idx; }
-    }, 600);
+    }, 4000);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!longPressTimer.current || !longPressPos.current) return;
+    if ((!longPressTimer.current && !longPressTimer2.current) || !longPressPos.current) return;
     const t = e.touches[0];
     const dx = t.clientX - longPressPos.current.x;
     const dy = t.clientY - longPressPos.current.y;
-    if (dx * dx + dy * dy > 64) {   // moved > ~8 px → treat as scroll
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
+    if (dx * dx + dy * dy > 64) { clearTimers(); touchIdxRef.current = null; }
   };
 
   const handleTouchEnd = () => {
-    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+    clearTimers();
+    // Quick tap (< 300ms): open photo modal (since preventDefault blocks click)
+    if (!longPressDidFire.current && touchIdxRef.current !== null && Date.now() - touchStartTime.current < 300) {
+      const idx = touchIdxRef.current;
+      setSelection(new Set());
+      lastClickedRef.current = idx;
+      setModalIdx(idx);
+    }
+    touchIdxRef.current = null;
   };
+  const handleTouchCancel = () => { clearTimers(); touchIdxRef.current = null; };
 
   const selectedPhotos = (): PhotoEntry[] =>
     [...selection].map(i => visible[i]).filter(Boolean);
@@ -335,11 +367,21 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
           } : null;
 
           const goMap = navMode !== 'map' ? () => {
-            // Find the exact system-tag name by checking which tag name is a substring
-            // of the photo path — same logic the debug button already uses.
-            const derivedTag = Object.keys(systemTagIndex.tags).find(name =>
-              p.path?.includes(name) || p.folder?.includes(name)
-            );
+            // Match system tag against photo path. System tags use Country/City/Album
+            // while photo paths use Camera/Continent/Country/Region/City/Album.
+            // Check if every segment of the tag name appears in the path in order.
+            const pathStr = p.path ?? p.folder ?? '';
+            const derivedTag = Object.keys(systemTagIndex.tags).find(name => {
+              if (pathStr.includes(name)) return true;
+              const tagSegs = name.split('/');
+              let searchFrom = 0;
+              for (const seg of tagSegs) {
+                const idx = pathStr.indexOf(seg, searchFrom);
+                if (idx === -1) return false;
+                searchFrom = idx + seg.length;
+              }
+              return true;
+            });
             navigate('map', {
               hash:       p.hash,
               tagName:    derivedTag ?? navTagName,
@@ -366,10 +408,11 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
               key={p.hash}
               data-photo-hash={p.hash}
               className={'thumb-cell' + (isSelected ? ' selected' : '')}
-              onContextMenu={Capacitor.isNativePlatform() ? undefined : e => handleContextMenu(e, i)}
-              onTouchStart={Capacitor.isNativePlatform() ? handleTouchStart(i) : undefined}
-              onTouchMove={Capacitor.isNativePlatform() ? handleTouchMove : undefined}
-              onTouchEnd={Capacitor.isNativePlatform() ? handleTouchEnd : undefined}
+              onContextMenu={e => handleContextMenu(e, i)}
+              onTouchStart={handleTouchStart(i)}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchCancel}
             >
               <button
                 className="thumb-btn"
@@ -404,17 +447,30 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
                 {locked && <div className="thumb-lock-overlay">🔒</div>}
               </button>
 
-              {/* Cross-tab navigation icons — top-right corner, shown on hover */}
+              {/* Cross-tab navigation icons — hover on desktop, 2s long-press on mobile */}
               {navMode && (goTimeline || goMap || goPath) && (
-                <div className="thumb-nav-icons" onClick={e => e.stopPropagation()}>
+                <div
+                  className={'thumb-nav-icons' + (mobileNavIdx === i ? ' mobile-visible' : '')}
+                  onClick={e => e.stopPropagation()}
+                  onTouchStart={e => e.stopPropagation()}
+                >
                   {goTimeline && (
-                    <button className="thumb-nav-btn" title="Go to Timeline" onClick={goTimeline}>📅</button>
+                    <button className="thumb-nav-btn" title="Go to Timeline"
+                      onClick={() => { setMobileNavIdx(null); goTimeline(); }}
+                      onTouchEnd={e => { e.preventDefault(); e.stopPropagation(); setMobileNavIdx(null); goTimeline(); }}
+                    >📅</button>
                   )}
                   {goMap && (
-                    <button className="thumb-nav-btn" title="Go to Map pin" onClick={goMap}>📍</button>
+                    <button className="thumb-nav-btn" title="Go to Map pin"
+                      onClick={() => { setMobileNavIdx(null); goMap(); }}
+                      onTouchEnd={e => { e.preventDefault(); e.stopPropagation(); setMobileNavIdx(null); goMap(); }}
+                    >📍</button>
                   )}
                   {goPath && (
-                    <button className="thumb-nav-btn" title="Go to folder" onClick={goPath}>📂</button>
+                    <button className="thumb-nav-btn" title="Go to folder"
+                      onClick={() => { setMobileNavIdx(null); goPath(); }}
+                      onTouchEnd={e => { e.preventDefault(); e.stopPropagation(); setMobileNavIdx(null); goPath(); }}
+                    >📂</button>
                   )}
                 </div>
               )}

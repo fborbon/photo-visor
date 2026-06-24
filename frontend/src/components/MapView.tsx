@@ -82,6 +82,24 @@ function MapReadyGuard({ onReady }: { onReady: () => void }) {
   return null;
 }
 
+function FitAllBounds({ markers, skip }: { markers: { lat: number; lng: number }[]; skip?: boolean }) {
+  const map = useMap();
+  const fittedRef = useRef(false);
+  useEffect(() => {
+    if (fittedRef.current || skip || markers.length === 0) return;
+    fittedRef.current = true;
+    const bounds = L.latLngBounds(markers.map(m => [m.lat, m.lng] as [number, number]));
+    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 12 });
+  }, [map, markers, skip]);
+  return null;
+}
+
+function FlyToMarker({ lat, lng }: { lat: number; lng: number }) {
+  const map = useMap();
+  useEffect(() => { map.flyTo([lat, lng], 10, { duration: 1 }); }, [map, lat, lng]);
+  return null;
+}
+
 interface PanelAlbum { slug: string; label: string; tagName: string; }
 interface PanelState {
   title:    string;
@@ -100,7 +118,9 @@ function isVideo(photo: PhotoEntry) {
 }
 
 export default function MapView({ displayName }: { displayName?: string }) {
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 767;
   const [mapLoaded,        setMapLoaded]        = useState(false);
+  const [flyTarget,        setFlyTarget]        = useState<{ lat: number; lng: number } | null>(null);
   const [panel,            setPanel]            = useState<PanelState | null>(null);
   const [panelSections,    setPanelSections]    = useState<AlbumSection[] | null>(null);
   const [panelLoading,     setPanelLoading]     = useState(false);
@@ -112,7 +132,9 @@ export default function MapView({ displayName }: { displayName?: string }) {
   const widthDragRef    = useRef<{ startX: number; startW: number } | null>(null);
   const vDragRef        = useRef<{ startY: number; startPx: number } | null>(null);
   const scrollToEndRef  = useRef(false);
-  const [tocHeight, setTocHeight] = useState(160); // px height of the TOC list
+  const [tocHeight, setTocHeight] = useState(160);
+  const [sheetHeight, setSheetHeight] = useState(65); // vh for mobile bottom sheet
+  const sheetDragRef = useRef<{ startY: number; startVh: number } | null>(null);
 
   function onWidthDragStart(e: React.PointerEvent) {
     widthDragRef.current = { startX: e.clientX, startW: panelWidth };
@@ -137,6 +159,19 @@ export default function MapView({ displayName }: { displayName?: string }) {
     setTocHeight(Math.max(40, Math.min(600, vDragRef.current.startPx + dy)));
   }
   function onVDragEnd() { vDragRef.current = null; }
+
+  function onSheetDragStart(e: React.PointerEvent) {
+    sheetDragRef.current = { startY: e.clientY, startVh: sheetHeight };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }
+  function onSheetDragMove(e: React.PointerEvent) {
+    if (!sheetDragRef.current) return;
+    const dy = sheetDragRef.current.startY - e.clientY;
+    const dvh = (dy / window.innerHeight) * 100;
+    setSheetHeight(Math.max(20, Math.min(90, sheetDragRef.current.startVh + dvh)));
+  }
+  function onSheetDragEnd() { sheetDragRef.current = null; }
 
   // Fetch photos for every album in the panel, sort sections by earliest date ascending.
   useEffect(() => {
@@ -260,6 +295,7 @@ export default function MapView({ displayName }: { displayName?: string }) {
     if (!marker || alreadyOpen) return;
     const dispCountry = translateCountry(marker.country, lang);
     const dispLabel   = marker.city ? `${marker.city}, ${dispCountry}` : dispCountry;
+    setFlyTarget({ lat: marker.lat, lng: marker.lng });
     setPanel({
       title:    dispLabel,
       albums:   marker.albums.map(a => ({ slug: a.slug, label: a.label, tagName: a.tagName })),
@@ -312,6 +348,8 @@ export default function MapView({ displayName }: { displayName?: string }) {
           maxBoundsViscosity={1.0}
         >
           <MapReadyGuard onReady={() => setMapLoaded(true)} />
+          {mapLoaded && sysTagMarkers.length > 0 && <FitAllBounds markers={sysTagMarkers} skip={!!pendingNav} />}
+          {flyTarget && <FlyToMarker lat={flyTarget.lat} lng={flyTarget.lng} />}
           {displayName && <WelcomeControl greeting={displayName} />}
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -351,15 +389,23 @@ export default function MapView({ displayName }: { displayName?: string }) {
       </div>
 
       {panel && (
-        <div className="map-panel" style={Capacitor.isNativePlatform() ? undefined : { width: panelWidth }}>
+        <div className="map-panel" style={isMobile ? { height: sheetHeight + 'vh' } : { width: panelWidth }}>
+          {!isMobile && (
+            <div
+              className="panel-width-handle"
+              onPointerDown={onWidthDragStart}
+              onPointerMove={onWidthDragMove}
+              onPointerUp={onWidthDragEnd}
+              onPointerCancel={onWidthDragEnd}
+            />
+          )}
           <div
-            className="panel-width-handle"
-            onPointerDown={onWidthDragStart}
-            onPointerMove={onWidthDragMove}
-            onPointerUp={onWidthDragEnd}
-            onPointerCancel={onWidthDragEnd}
-          />
-          <div className="panel-header">
+            className="panel-header"
+            onPointerDown={isMobile ? onSheetDragStart : undefined}
+            onPointerMove={isMobile ? onSheetDragMove : undefined}
+            onPointerUp={isMobile ? onSheetDragEnd : undefined}
+            onPointerCancel={isMobile ? onSheetDragEnd : undefined}
+          >
             <div className="panel-header-left">
               <h2 className="panel-title">{panel.title}</h2>
             </div>

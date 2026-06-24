@@ -30,7 +30,7 @@ interface InnerProps {
 }
 
 function AppInner({ signOut, email }: InnerProps) {
-  const [tab, setTab] = useState<Tab>('map');
+  const [tab, setTab] = useState<Tab>('timeline');
   const [timelineNav, setTimelineNav] = useState<{ year: number; month: number } | null>(null);
   const { lang, toggle, tr } = useLang();
   const { isOwner, makePhotosPrivate, makePhotosPublic } = usePrivacy();
@@ -84,24 +84,27 @@ function AppInner({ signOut, email }: InnerProps) {
         )}
 
         <nav className="tab-nav">
-          <button className={'tab-btn' + (tab === 'map'      ? ' active' : '')} onClick={() => setTab('map')}>
-            🗺 {tr.tabMap}
-          </button>
           <button className={'tab-btn' + (tab === 'timeline' ? ' active' : '')} onClick={() => setTab('timeline')}>
             📅 {tr.tabTimeline}
           </button>
           <button className={'tab-btn' + (tab === 'tags'     ? ' active' : '')} onClick={() => setTab('tags')}>
             🏷 {tr.tabTags}
           </button>
+          <button className={'tab-btn' + (tab === 'map'      ? ' active' : '')} onClick={() => setTab('map')}>
+            🗺 {tr.tabMap}
+          </button>
+          <div className="tab-divider" />
           <button className={'tab-btn' + (tab === 'latest'   ? ' active' : '')} onClick={() => setTab('latest')}>
             🆕 {tr.tabLatest}
           </button>
           <button className={'tab-btn' + (tab === 'slots'    ? ' active' : '')} onClick={() => setTab('slots')}>
             🎰 {tr.tabSlots}
           </button>
-          <button className={'tab-btn' + (tab === 'stats'  ? ' active' : '')} onClick={() => setTab('stats')}>
-            📊 {tr.tabStats}
-          </button>
+          {isOwner && (
+            <button className={'tab-btn' + (tab === 'stats'  ? ' active' : '')} onClick={() => setTab('stats')}>
+              📊 {tr.tabStats}
+            </button>
+          )}
           {isOwner && (
             <button
               className={'tab-btn' + (tab === 'sync' ? ' active' : '') + (syncStatus.phase === 'syncing' || syncStatus.phase === 'enumerating' ? ' tab-btn--syncing' : '')}
