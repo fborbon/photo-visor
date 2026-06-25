@@ -25,6 +25,7 @@ interface Props {
   navMode?:       NavMode;    // which tab this grid lives in (controls which icons appear)
   navTagName?:    string;     // Map: full sysTag name (e.g. "España/Pamplona/Concierto Malu")
   defaultSort?:   SortOrder;  // initial sort order (default: 'oldest')
+  hideHeader?:    boolean;    // hide title + sort buttons
 }
 
 interface MenuState { x: number; y: number; forSelection: boolean; singlePhoto: PhotoEntry | null; }
@@ -99,7 +100,7 @@ function shortModel(model: string): string {
 
 type SortOrder = 'default' | 'oldest' | 'newest';
 
-export default function PhotoGrid({ photos, albumKey, title, placeFallback = '', navMode, navTagName, defaultSort = 'oldest' }: Props) {
+export default function PhotoGrid({ photos, albumKey, title, placeFallback = '', navMode, navTagName, defaultSort = 'oldest', hideHeader }: Props) {
   const [modalIdx,     setModalIdx]     = useState<number | null>(null);
   const [selection,    setSelection]    = useState<Set<number>>(new Set());
   const lastClickedRef                  = useRef<number | null>(null);
@@ -114,17 +115,21 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   const longPressTimer2 = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { navigate } = useNav();
-  const { isOwner, isPhotoPrivate, isAlbumPrivate, togglePhoto } = usePrivacy();
+  const { isOwner, dateCutoff, isTagAllowed, isPhotoPrivate, isAlbumPrivate, togglePhoto } = usePrivacy();
   const { addPhotoToTag, getComment, getCommentShared, setComment, tags, sharedTags, systemTagIndex } = useTags();
   const { trashPhotos, isTrashed } = useTrash();
   const { tr } = useLang();
   const { trackEvent } = useAnalytics();
 
   const albumPrivate = albumKey ? isAlbumPrivate(albumKey) : false;
-  const filtered = photos.filter(p =>
-    !isTrashed(p.hash) &&
-    (isOwner || (!isPhotoPrivate(p.hash) && !albumPrivate))
-  );
+  const filtered = photos.filter(p => {
+    if (isTrashed(p.hash)) return false;
+    if (dateCutoff && p.dt && p.dt < dateCutoff) return false;
+    if (isOwner) return true;
+    const photoPath = p.path ?? p.folder ?? '';
+    if (isTagAllowed(photoPath)) return true;
+    return !isPhotoPrivate(p.hash) && !albumPrivate;
+  });
   const visible = sortOrder === 'default' ? filtered : [...filtered].sort((a, b) => {
     const da = a.dt ?? '', db = b.dt ?? '';
     return sortOrder === 'oldest' ? da.localeCompare(db) : db.localeCompare(da);
@@ -181,7 +186,10 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   };
 
   // ── Context menu ─────────────────────────────────────────────────
-  const isTouchDevice = 'ontouchstart' in window;
+  const isTouchDevice = typeof window !== 'undefined' && 'ontouchstart' in window;
+  const touchIdxRef = useRef<number | null>(null);
+  const touchStartTime = useRef(0);
+
   const handleContextMenu = (e: React.MouseEvent, idx: number) => {
     e.preventDefault();
     // On touch devices, the 2s/4s long-press timers handle nav icons and menu.
@@ -207,9 +215,6 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
     if (longPressTimer2.current) { clearTimeout(longPressTimer2.current); longPressTimer2.current = null; }
   };
 
-  const touchIdxRef = useRef<number | null>(null);
-  const touchStartTime = useRef(0);
-
   const handleTouchStart = (idx: number) => (e: React.TouchEvent) => {
     longPressDidFire.current = false;
     touchIdxRef.current = idx;
@@ -217,7 +222,6 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
     if (mobileNavIdx !== null && mobileNavIdx !== idx) setMobileNavIdx(null);
     const t = e.touches[0];
     longPressPos.current = { x: t.clientX, y: t.clientY };
-    e.preventDefault();
     longPressTimer.current = setTimeout(() => {
       longPressTimer.current = null;
       if (!longPressPos.current) return;
@@ -246,13 +250,8 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
 
   const handleTouchEnd = () => {
     clearTimers();
-    // Quick tap (< 300ms): open photo modal (since preventDefault blocks click)
-    if (!longPressDidFire.current && touchIdxRef.current !== null && Date.now() - touchStartTime.current < 300) {
-      const idx = touchIdxRef.current;
-      setSelection(new Set());
-      lastClickedRef.current = idx;
-      setModalIdx(idx);
-    }
+    // Quick taps are handled by the browser's native click event (handleClick).
+    // Touch handlers only manage long-press (2s nav icons, 4s context menu).
     touchIdxRef.current = null;
   };
   const handleTouchCancel = () => { clearTimers(); touchIdxRef.current = null; };
@@ -299,7 +298,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
 
   return (
     <div className="photo-grid-wrap">
-      <div className="grid-header">
+      {!hideHeader && <div className="grid-header">
         {title && <h3 className="grid-title">{title} <span className="grid-count">· {photos.length}</span></h3>}
         <div className="grid-sort-btns">
           <button
@@ -311,7 +310,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
             onClick={() => setSortOrder(s => s === 'newest' ? 'default' : 'newest')}
           >⬇ Newest</button>
         </div>
-      </div>
+      </div>}
 
       {/* ── Selection toolbar ─────────────────────────────── */}
       {hasSelection && (
@@ -349,7 +348,8 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
       {/* ── Photo grid ─────────────────────────────────────── */}
       <div className={'photo-grid' + (hasSelection ? ' has-selection' : '')}>
         {visible.map((p, i) => {
-          const locked      = isPhotoPrivate(p.hash) || albumPrivate;
+          const photoPath   = p.path ?? p.folder ?? '';
+          const locked      = (isPhotoPrivate(p.hash) || albumPrivate) && !isTagAllowed(photoPath);
           const place       = formatPlace(p, placeFallback);
           const description = extractDescription(p.folder, p.city, p.country);
           const dateFmt     = formatDate(p.dt, tr.months);
@@ -475,35 +475,6 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
                 </div>
               )}
 
-              {isOwner && (
-                <div className="thumb-bottom-left">
-                  <button
-                    className="thumb-debug-btn"
-                    title="Copy debug info"
-                    onClick={e => {
-                      e.stopPropagation();
-                      const sysTags = Object.keys(systemTagIndex.tags).filter(name =>
-                        p.path?.includes(name) || p.folder?.includes(name)
-                      );
-                      const photoTags = [
-                        ...Object.entries(tags).filter(([, v]) => v.photos.some(ph => ph.hash === p.hash)).map(([k]) => k),
-                        ...Object.entries(sharedTags).filter(([, v]) => v.photos.some(ph => ph.hash === p.hash)).map(([k]) => k),
-                        ...sysTags,
-                      ];
-                      const location = [p.city, p.country].filter(Boolean).join(', ')
-                        || (p.lat != null && p.lng != null ? `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}` : 'n/a');
-                      const text = [
-                        `hash: ${p.hash}`,
-                        `path: ${p.path ?? 'n/a'}`,
-                        `tags: ${photoTags.length ? photoTags.join(', ') : 'none'}`,
-                        `location: ${location}`,
-                      ].join('\n');
-                      navigator.clipboard.writeText(text).catch(() => {});
-                    }}
-                  >🔍</button>
-                </div>
-              )}
-
               <div className="thumb-bottom-right">
                 {p.model && (
                   <span
@@ -522,6 +493,17 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
                   >
                     {locked ? '🔒' : '🔓'}
                   </button>
+                )}
+                {isOwner && (
+                  <button
+                    className="thumb-debug-btn"
+                    title="Copy path"
+                    onClick={e => {
+                      e.stopPropagation();
+                      const text = p.path ?? p.folder ?? p.hash;
+                      navigator.clipboard.writeText(text).catch(() => {});
+                    }}
+                  >📋</button>
                 )}
               </div>
             </div>

@@ -20,7 +20,7 @@ function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length
 export default function SlotMachineView() {
   const { tr }   = useLang();
   const tagsCtx  = useTags();
-  const { isOwner, isPhotoPrivate } = usePrivacy();
+  const { isOwner, dateCutoff, isTagAllowed, isPhotoPrivate } = usePrivacy();
   const { navigate } = useNav();
   const { data: summary } = useIndex<Summary>('index/summary.json');
 
@@ -35,20 +35,31 @@ export default function SlotMachineView() {
       const r = await fetch(config.indexBase + '/index/time/' + year + '.json');
       if (!r.ok) return;
       const photos = await r.json() as PhotoEntry[];
-      const withThumb = photos.filter(p => p.thumb && (isOwner || !isPhotoPrivate(p.hash)));
+      const withThumb = photos.filter(p => {
+        if (!p.thumb) return false;
+        if (dateCutoff && p.dt && p.dt < dateCutoff) return false;
+        if (isOwner) return true;
+        if (isPhotoPrivate(p.hash)) {
+          const photoPath = p.path ?? p.folder ?? '';
+          return isTagAllowed(photoPath);
+        }
+        return true;
+      });
       poolRef.current = [...poolRef.current, ...withThumb];
       setPoolSize(poolRef.current.length);
     } catch { /* ignore */ }
-  }, [isOwner, isPhotoPrivate]);
+  }, [isOwner, isPhotoPrivate, isTagAllowed, dateCutoff]);
 
   const [poolSize, setPoolSize] = useState(0);  // drives re-render when pool grows
 
-  // Load 3 random years on mount
+  // Load 3 random years on mount (respecting date cutoff)
+  const cutoffYear = dateCutoff ? parseInt(dateCutoff.slice(0, 4), 10) : 0;
   useEffect(() => {
     if (!summary?.years?.length) return;
-    const shuffled = [...summary.years].sort(() => Math.random() - 0.5);
+    const eligible = summary.years.filter(y => y >= cutoffYear);
+    const shuffled = [...eligible].sort(() => Math.random() - 0.5);
     shuffled.slice(0, 3).forEach(y => fetchYear(y));
-  }, [summary, fetchYear]);
+  }, [summary, fetchYear, cutoffYear]);
 
   // ── Slot state ─────────────────────────────────────────────────────
   const [photos,   setPhotos]   = useState<(PhotoEntry | null)[]>(Array(SLOT_COUNT).fill(null));

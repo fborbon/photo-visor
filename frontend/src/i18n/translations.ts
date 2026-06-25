@@ -104,7 +104,7 @@ const t = {
 
     // Statistics
     tabStats:         'Statistics',
-    tabUsage:         'Usage',
+    tabUsage:         'Access',
     statsTotal:       'total photos',
     statsNoDate:      'without date',
     statsCumulative:       'Cumulative photos over time',
@@ -265,7 +265,7 @@ const t = {
 
     // Estadísticas
     tabStats:         'Estadísticas',
-    tabUsage:         'Uso',
+    tabUsage:         'Acceso',
     statsTotal:       'fotos en total',
     statsNoDate:      'sin fecha',
     statsCumulative:       'Fotos acumuladas a lo largo del tiempo',

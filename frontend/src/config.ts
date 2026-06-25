@@ -27,12 +27,37 @@ const EMAIL_DISPLAY_NAMES: Record<string, string> = IS_DEMO ? {} : {
   'ferborbon77@hotmail.com':         'Adrián',
   'rogui1900@gmail.com':             'Rosibel',
   'borgui11@gmail.com':              'Katherine',
+  'beguinir@hotmail.com':            'Beatriz',
+  'beatriz_dummy@test.com':          'Beatriz (test)',
 };
 
 const FEMALE_EMAILS: Set<string> = IS_DEMO ? new Set() : new Set([
   'rogui1900@gmail.com',
   'borgui11@gmail.com',
+  'beguinir@hotmail.com',
+  'beatriz_dummy@test.com',
 ]);
+
+// Per-user date cutoffs: users can only see photos from this date onwards.
+const USER_DATE_CUTOFFS: Record<string, string> = IS_DEMO ? {} : {
+  'beguinir@hotmail.com': '2016-12-01',
+  'beatriz_dummy@test.com': '2016-12-01',
+};
+
+// Per-user private folder exceptions: allow specific non-owner users to see
+// private folders (normally owner-only). Each entry lists allowed prefixes
+// and excluded sub-prefixes.
+interface FolderAccess { allow: string[]; deny: string[]; }
+const USER_FOLDER_ACCESS: Record<string, FolderAccess> = IS_DEMO ? {} : {
+  'beguinir@hotmail.com': {
+    allow: ['.Amigos/España/Olloki/Beatriz/'],
+    deny:  ['.Amigos/España/Olloki/Beatriz/Otros/'],
+  },
+  'beatriz_dummy@test.com': {
+    allow: ['.Amigos/España/Olloki/Beatriz/'],
+    deny:  ['.Amigos/España/Olloki/Beatriz/Otros/'],
+  },
+};
 
 export function displayNameForEmail(email: string): string {
   return EMAIL_DISPLAY_NAMES[email.toLowerCase()] ?? email.split('@')[0] ?? email;
@@ -40,6 +65,26 @@ export function displayNameForEmail(email: string): string {
 
 export function isFemaleEmail(email: string): boolean {
   return FEMALE_EMAILS.has(email.toLowerCase());
+}
+
+export function getDateCutoff(email: string): string | null {
+  return USER_DATE_CUTOFFS[email.toLowerCase()] ?? null;
+}
+
+export function getFolderAccess(email: string): FolderAccess | null {
+  return USER_FOLDER_ACCESS[email.toLowerCase()] ?? null;
+}
+
+export function isTagAllowedForUser(tagName: string, access: FolderAccess | null): boolean {
+  if (!access) return false;
+  const match = access.allow.some(prefix => tagName.startsWith(prefix));
+  if (!match) return false;
+  const tag = tagName.endsWith('/') ? tagName : tagName + '/';
+  return !access.deny.some(prefix => tag.startsWith(prefix));
+}
+
+export function getAllowedPrefixes(access: FolderAccess | null): string[] {
+  return access?.allow ?? [];
 }
 
 export default config;

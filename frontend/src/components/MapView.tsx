@@ -241,7 +241,7 @@ export default function MapView({ displayName }: { displayName?: string }) {
   const { pendingNav, clearNav } = useNav();
   const { systemTagIndex } = useTags();
   const { lang, tr }       = useLang();
-  const { isOwner }        = usePrivacy();
+  const { isOwner, isTagAllowed } = usePrivacy();
   const { isFavorite, toggleFavorite } = useFavorites();
 
   // One marker per geographic location. All system tags that resolve to the same
@@ -255,7 +255,7 @@ export default function MapView({ displayName }: { displayName?: string }) {
     const byLocation = new Map<string, LocEntry>();
 
     for (const [name, meta] of Object.entries(systemTagIndex.tags)) {
-      if (!isOwner && !meta.public) continue;
+      if (!isOwner && !meta.public && !isTagAllowed(name)) continue;
       const country = sysTagCountryKey(name);
       const city    = sysTagCityKey(name);
       const coords: [number, number] | null =

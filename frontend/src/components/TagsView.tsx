@@ -23,7 +23,7 @@ const DEFAULT_RAIL = 273;
 // Built by cross-referencing the actual S3 index against folders.txt.
 // display = exact disk name where available; underscore→space fallback otherwise.
 
-interface TagPath { display: string; s3: string; }
+interface TagPath { display: string; s3: string; latest_dt?: string; }
 
 interface TreeNode {
   name:     string;   // last segment of display path
@@ -57,7 +57,8 @@ function buildPathTree(tagPaths: TagPath[]): Record<string, TreeNode> {
 }
 
 function diskPathToDisplay(displayPath: string): string {
-  return 'Fotos/' + displayPath;
+  if (displayPath.startsWith('Camera/')) return 'Fotos/' + displayPath;
+  return displayPath;
 }
 
 
@@ -164,7 +165,7 @@ function folderFullLabel(diskPath: string) {
 export default function TagsView() {
   const { tags, tagNames, sharedTags, sharedTagNames, systemTagIndex, systemTagsLoading, deleteTag, isMySharedTag } = useTags();
   const { lang, tr } = useLang();
-  const { isOwner } = usePrivacy();
+  const { isOwner, dateCutoff, isTagAllowed, allowedPrefixes } = usePrivacy();
   const { pendingNav, clearNav, navigate } = useNav();
   // When this component mounts due to a folder-path navigation, bypass the module-level
   // useIndex cache (which may hold a stale path_tags.json from earlier in the session).
@@ -197,13 +198,66 @@ export default function TagsView() {
   }, []);
 
   // Path tags: {display, s3}[] — every entry has a real S3 index file
-  // Non-owners only see Camera/ subtree
+  // Non-owners only see Camera/ subtree + user-specific allowed private folders.
+  // Allowed private folders have their parent path stripped for privacy
+  // (e.g. .Amigos/España/Olloki/Beatriz/2017 → Beatriz/2017).
+  // Folders whose name indicates all photos are before the date cutoff are hidden.
   const { data: tagPathsData } = useIndex<TagPath[]>(pathTagsKey);
+
   const tagPaths   = useMemo(() => {
     const all = tagPathsData ?? [];
     if (isOwner) return all;
-    return all.filter(t => t.display.startsWith('Camera/'));
-  }, [tagPathsData, isOwner]);
+
+    function isBeforeCutoff(t: TagPath): boolean {
+      if (!dateCutoff) return false;
+      if (t.latest_dt) return t.latest_dt < dateCutoff;
+      return true; // no date info = hide for restricted users (can't verify)
+    }
+
+    const result: TagPath[] = [];
+    for (const t of all) {
+      if (t.display.startsWith('Camera/')) {
+        if (isBeforeCutoff(t)) continue;
+        result.push(t);
+        continue;
+      }
+      if (!isTagAllowed(t.display)) continue;
+      const prefix = allowedPrefixes.find(p => t.display.startsWith(p));
+      if (prefix) {
+        const root = prefix.replace(/\/$/, '').split('/').pop() ?? prefix;
+        const stripped = root + t.display.slice(prefix.length - 1);
+        if (isBeforeCutoff({ display: stripped, s3: t.s3, latest_dt: t.latest_dt })) continue;
+        result.push({ display: stripped, s3: t.s3, latest_dt: t.latest_dt });
+      } else {
+        if (isBeforeCutoff(t)) continue;
+        result.push(t);
+      }
+    }
+
+    // Iteratively prune childless nodes bottom-up.
+    // A node without children is kept only if it was a leaf in the ORIGINAL
+    // unfiltered data (i.e., it was never a parent — it's a real album folder).
+    const allDisplays = new Set(all.map(t => t.display));
+    let pruned = result;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const next = pruned.filter(t => {
+        const hasChildren = pruned.some(
+          other => other.display !== t.display && other.display.startsWith(t.display + '/')
+        );
+        if (hasChildren) return true;
+        // No children — was this originally a parent in the full dataset?
+        const wasParent = all.some(
+          other => other.display !== t.display && other.display.startsWith(t.display + '/')
+        );
+        if (wasParent) { changed = true; return false; }
+        return true;
+      });
+      pruned = next;
+    }
+    return pruned;
+  }, [tagPathsData, isOwner, isTagAllowed, allowedPrefixes, dateCutoff]);
   const folderPaths = useMemo(() => tagPaths.map(t => t.display), [tagPaths]);
 
   // Build tree — non-owners only see Camera/ subtree
@@ -286,7 +340,7 @@ export default function TagsView() {
   // Filtered system tag names
   const sysTagNames = useMemo(() => {
     const all = Object.keys(systemTagIndex.tags)
-      .filter(n => isOwner || systemTagIndex.tags[n].public)
+      .filter(n => isOwner || systemTagIndex.tags[n].public || isTagAllowed(n))
       .sort();
     if (!sysFilter.trim()) return all;
     const q = sysFilter.toLowerCase();

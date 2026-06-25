@@ -9,6 +9,7 @@ const KNOWN_EMAILS = [
   'ferborbon77@hotmail.com',
   'rogui1900@gmail.com',
   'borgui11@gmail.com',
+  'beguinir@hotmail.com',
 ];
 const DAYS = 30;
 

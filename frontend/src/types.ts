@@ -36,7 +36,7 @@ export interface Summary {
   general_folders: string[];
 }
 
-export type Tab = 'map' | 'timeline' | 'tags' | 'upload' | 'latest' | 'slots' | 'stats' | 'sync' | 'trash' | 'usage';
+export type Tab = 'map' | 'timeline' | 'tags' | 'upload' | 'latest' | 'slots' | 'stats' | 'sync' | 'trash' | 'usage' | 'users';
 
 export interface AlbumConfig {
   sync:         boolean;

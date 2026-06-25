@@ -15,12 +15,13 @@ interface Props { initialYear?: number; initialMonth?: number; }
 
 export default function TimelineView({ initialYear, initialMonth }: Props) {
   const { tr }                       = useLang();
-  const { isOwner, isPhotoPrivate }  = usePrivacy();
+  const { isOwner, dateCutoff, isTagAllowed, isPhotoPrivate }  = usePrivacy();
   const { pendingNav, clearNav }     = useNav();
   const { data: summary }            = useIndex<Summary>('index/summary.json');
+  const cutoffYear = dateCutoff ? parseInt(dateCutoff.slice(0, 4), 10) : 0;
   const years = useMemo(
-    () => (summary ? [...summary.years].sort((a, b) => b - a) : []),
-    [summary],
+    () => (summary ? [...summary.years].filter(y => y >= cutoffYear).sort((a, b) => b - a) : []),
+    [summary, cutoffYear],
   );
 
   const mainRef        = useRef<HTMLDivElement>(null);
@@ -64,8 +65,17 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
   const monthGroups: MonthGroup[] = useMemo(() => {
     if (!yearPhotos) return [];
     const map = new Map<number, PhotoEntry[]>();
+    const cutoffMonth = dateCutoff && selectedYear === cutoffYear
+      ? parseInt(dateCutoff.slice(5, 7), 10) : 0;
     for (const p of yearPhotos) {
-      if (!isOwner && isPhotoPrivate(p.hash)) continue;
+      if (!isOwner && isPhotoPrivate(p.hash)) {
+        const photoPath = p.path ?? p.folder ?? '';
+        if (!isTagAllowed(photoPath)) continue;
+      }
+      if (dateCutoff) {
+        if (p.dt && p.dt < dateCutoff) continue;
+        if (!p.dt && selectedYear === cutoffYear && (p.month ?? 0) < cutoffMonth) continue;
+      }
       const m = p.month ?? 0;
       const arr = map.get(m) ?? [];
       arr.push(p);
@@ -74,7 +84,7 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
     return Array.from(map.entries())
       .sort((a, b) => a[0] - b[0])
       .map(([month, photos]) => ({ month, photos }));
-  }, [yearPhotos, isOwner, isPhotoPrivate]);
+  }, [yearPhotos, isOwner, isPhotoPrivate, isTagAllowed, dateCutoff]);
 
   const activeGroup = selectedMonth !== null
     ? monthGroups.find(g => g.month === selectedMonth) ?? null

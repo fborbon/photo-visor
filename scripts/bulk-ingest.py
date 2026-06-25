@@ -1591,6 +1591,129 @@ def _fix_geo(db: sqlite3.Connection, dry_run: bool):
     log.info(f"  Done — {len(batch):,} records updated")
 
 
+def _load_phone_synced_hashes(s3, db: sqlite3.Connection) -> set[str]:
+    """Load hashes of photos uploaded via phone sync (not from the external HD).
+    A photo is phone-synced if it exists in a general index file but NOT in the
+    ingest's SQLite DB (which only tracks photos from the external HD)."""
+    db_hashes = {r[0] for r in db.execute("SELECT hash FROM photos WHERE status='active'").fetchall()}
+    phone_hashes: set[str] = set()
+    phone_index_cache: dict[str, list] = {}
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=BUCKET, Prefix="index/general/"):
+            for obj in page.get("Contents", []):
+                try:
+                    body = s3.get_object(Bucket=BUCKET, Key=obj["Key"])["Body"].read()
+                    data = json.loads(body)
+                    if not isinstance(data, list):
+                        continue
+                    for p in data:
+                        h = p.get("hash")
+                        if h and h not in db_hashes:
+                            phone_hashes.add(h)
+                            phone_index_cache.setdefault(obj["Key"], []).append(p)
+                except Exception:
+                    continue
+    except Exception as e:
+        log.warning(f"Failed to load phone-synced hashes: {e}")
+    if phone_hashes:
+        log.info(f"Protected {len(phone_hashes):,} phone-synced photos from deletion")
+    _load_phone_synced_hashes._cache = phone_index_cache
+    return phone_hashes
+_load_phone_synced_hashes._cache = {}
+
+
+def _merge_phone_synced_indexes(s3, dry_run: bool):
+    """After the ingest rebuilds indexes, merge back any phone-synced general
+    index entries and path_tags that the rebuild may have dropped."""
+    cache = getattr(_load_phone_synced_hashes, "_cache", {})
+    if not cache:
+        return
+    # Merge general index files
+    for key, phone_entries in cache.items():
+        try:
+            body = s3.get_object(Bucket=BUCKET, Key=key)["Body"].read()
+            existing = json.loads(body)
+        except Exception:
+            existing = []
+        existing_hashes = {p["hash"] for p in existing}
+        to_add = [p for p in phone_entries if p["hash"] not in existing_hashes]
+        if to_add:
+            merged = existing + to_add
+            if not dry_run:
+                s3.put_object(Bucket=BUCKET, Key=key,
+                              Body=json.dumps(merged, ensure_ascii=False, separators=(",", ":")),
+                              ContentType="application/json",
+                              CacheControl="no-cache, no-store, must-revalidate")
+            log.info(f"  Restored {len(to_add)} phone-synced entries in {key}")
+
+    # Merge time index entries for phone-synced photos
+    by_year: dict[int, list] = {}
+    for entries in cache.values():
+        for p in entries:
+            year = p.get("year")
+            if not year:
+                dt = p.get("dt") or ""
+                if len(dt) >= 4 and dt[:4].isdigit():
+                    year = int(dt[:4])
+            if year:
+                by_year.setdefault(year, []).append(p)
+    for year, phone_photos in by_year.items():
+        tkey = f"index/time/{year}.json"
+        try:
+            body = s3.get_object(Bucket=BUCKET, Key=tkey)["Body"].read()
+            existing = json.loads(body)
+        except Exception:
+            existing = []
+        existing_hashes = {p["hash"] for p in existing}
+        to_add = [p for p in phone_photos if p["hash"] not in existing_hashes]
+        if to_add:
+            merged = existing + to_add
+            merged.sort(key=lambda p: p.get("dt") or "")
+            if not dry_run:
+                s3.put_object(Bucket=BUCKET, Key=tkey,
+                              Body=json.dumps(merged, ensure_ascii=False, separators=(",", ":")),
+                              ContentType="application/json",
+                              CacheControl="max-age=3600")
+            log.info(f"  Restored {len(to_add)} phone-synced entries in {tkey}")
+
+    # Merge path_tags entries for phone-synced folders
+    phone_folders = set()
+    for entries in cache.values():
+        for p in entries:
+            path = p.get("path") or ""
+            folder = p.get("folder") or ""
+            if path.startswith("Camera/") and "/" in path:
+                parts = path.split("/")
+                for depth in range(2, len(parts)):
+                    phone_folders.add("/".join(parts[:depth]))
+            elif folder:
+                display = "Camera/" + folder
+                parts = display.split("/")
+                for depth in range(2, len(parts) + 1):
+                    phone_folders.add("/".join(parts[:depth]))
+    if not phone_folders:
+        return
+    try:
+        body = s3.get_object(Bucket=BUCKET, Key="index/path_tags.json")["Body"].read()
+        path_tags = json.loads(body)
+    except Exception:
+        path_tags = []
+    existing_displays = {t["display"] for t in path_tags}
+    added = 0
+    for folder in sorted(phone_folders):
+        if folder not in existing_displays:
+            s3_key = re.sub(r"[^\w\-/]", "_", folder[len("Camera/"):])
+            path_tags.append({"display": folder, "s3": s3_key})
+            added += 1
+    if added and not dry_run:
+        s3.put_object(Bucket=BUCKET, Key="index/path_tags.json",
+                      Body=json.dumps(path_tags, ensure_ascii=False, separators=(",", ":")),
+                      ContentType="application/json",
+                      CacheControl="no-cache, no-store, must-revalidate")
+        log.info(f"  Restored {added} phone-synced path_tags entries")
+
+
 def run(args):
     db = open_db()
     s3 = boto3.client("s3", region_name=REGION)
@@ -1624,7 +1747,10 @@ def run(args):
     new_hashes     = [h for h in local if h not in db_rows]
     moved_hashes   = [h for h in local if h in db_active
                       and str(local[h].relative_to(args.root)) != db_active[h]["current_path"]]
-    deleted_hashes = [h for h in db_active if h not in local]
+    # Protect phone-synced photos: don't delete S3 photos that were uploaded
+    # via phone sync (they have album-path metadata and may not exist on disk).
+    phone_synced_hashes = _load_phone_synced_hashes(s3, db)
+    deleted_hashes = [h for h in db_active if h not in local and h not in phone_synced_hashes]
 
     log.info(f"New: {len(new_hashes):,}  |  Moved: {len(moved_hashes):,}  |  "
              f"Deleted: {len(deleted_hashes):,}  |  Unchanged: "
@@ -1948,6 +2074,7 @@ def run(args):
     # ── 8. Build and upload index ─────────────────────────────────────────────
     if not args.skip_index:
         build_and_upload_index(db, s3, args.dry_run)
+        _merge_phone_synced_indexes(s3, args.dry_run)
 
     # ── 9. Summary ────────────────────────────────────────────────────────────
     totals = db.execute(

@@ -470,14 +470,16 @@ def _process(key: str):
     # Download (metadata included in GetObject response)
     obj  = s3.get_object(Bucket=BUCKET, Key=key)
     data = obj["Body"].read()
-    album_path_raw = obj.get("Metadata", {}).get("album-path")
+    s3_meta = obj.get("Metadata", {})
+    album_path_raw = s3_meta.get("album-path")
     album_path = unquote(album_path_raw) if album_path_raw else None
     album_inner = album_path[len("Camera/"):] if album_path and album_path.startswith("Camera/") else None
+    original_filename = s3_meta.get("original-filename", filename)
 
     # Extract metadata
     meta = extract_exif(data)
     if not meta.get("year"):
-        meta.update(filename_date(filename))
+        meta.update(filename_date(original_filename))
 
     lat = meta.get("lat")
     lng = meta.get("lng")
@@ -508,7 +510,8 @@ def _process(key: str):
         "country": country,
         "city":    city,
         "folder":  album_inner,
-        "path":    ("Camera/" + album_inner + "/" + filename) if album_inner else None,
+        "path":    ("Camera/" + album_inner + "/" + original_filename) if album_inner else None,
+        "name":    original_filename if original_filename != filename else None,
         "w":       None,
         "h":       None,
     }

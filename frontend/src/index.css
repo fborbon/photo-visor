@@ -1251,19 +1251,57 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 
 .latest-strip {
   display: flex;
-  gap: 2px;
+  gap: 6px;
   padding: 0 .9rem .7rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.latest-strip::-webkit-scrollbar { height: 4px; }
+.latest-strip::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+.latest-strip-cell {
+  flex-shrink: 0;
+  position: relative;
 }
 .latest-strip-thumb {
-  width: 72px;
-  height: 54px;
+  width: 120px;
+  height: 90px;
   object-fit: cover;
-  border-radius: 4px;
-  flex-shrink: 0;
-  cursor: pointer;
+  border-radius: 6px;
+  display: block;
+}
+.latest-strip-nav {
+  position: absolute;
+  top: 2px; right: 2px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
   transition: opacity .15s;
 }
-.latest-strip-thumb:hover { opacity: .8; }
+.latest-strip-cell:hover .latest-strip-nav { opacity: 1; }
+@media (hover: none) { .latest-strip-nav { opacity: 0.7; } }
+.latest-strip-nav button {
+  font-size: .65rem;
+  width: 22px; height: 22px;
+  border-radius: 3px;
+  background: #000b;
+  display: flex; align-items: center; justify-content: center;
+  border: none; cursor: pointer; padding: 0;
+}
+.latest-strip-nav button:hover { background: #FF7A00; }
+.latest-strip-clip {
+  position: absolute;
+  bottom: 2px; right: 2px;
+  font-size: .65rem;
+  width: 22px; height: 22px;
+  border-radius: 3px;
+  background: #000b;
+  display: flex; align-items: center; justify-content: center;
+  border: none; cursor: pointer; padding: 0;
+  opacity: 0; transition: opacity .15s;
+}
+.latest-strip-cell:hover .latest-strip-clip { opacity: 0.9; }
+@media (hover: none) { .latest-strip-clip { opacity: 0.55; } }
+.latest-strip-clip:hover { background: #FF7A00; }
 .latest-strip-more {
   width: 72px;
   height: 54px;
@@ -1284,14 +1322,19 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   gap: .6rem;
 }
 .latest-comment-card {
-  display: flex;
-  align-items: flex-start;
-  gap: .9rem;
   background: #111;
   border: 1px solid #1e1e1e;
   border-radius: 10px;
-  padding: .8rem 1rem;
+  overflow: hidden;
+  margin-bottom: .6rem;
   transition: border-color .15s;
+}
+.latest-comment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .65rem .9rem .4rem;
+  gap: .6rem;
 }
 .latest-comment-card.clickable { cursor: pointer; }
 .latest-comment-card:hover { border-color: #2a2a2a; }
@@ -2176,7 +2219,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .display-name-save:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ── Usage analytics view ──────────────────────────────────────────────────── */
-.usage-wrap        { max-width: 960px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+.usage-wrap        { max-width: 960px; margin: 0 auto; padding: 1.5rem 1rem 3rem; overflow-y: auto; height: 100%; }
 .usage-title       { font-size: 1.4rem; font-weight: 700; color: #eee; margin-bottom: 1.5rem; }
 .usage-loading,
 .usage-error,
@@ -2264,3 +2307,46 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .album-section-hdr .fav-star { opacity: 0.5; }
 .album-section-hdr:hover .fav-star { opacity: 1; }
 .album-section-count { font-size: .72rem; color: #777; font-weight: 400; }
+
+/* ── Users Management ────────────────────────────────────────────── */
+.um-layout { padding: 1.5rem; max-width: 900px; overflow-y: auto; height: 100%; }
+.um-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
+.um-header h2 { margin: 0; font-size: 1.3rem; }
+.um-add-user-btn { background: #FF7A00; color: #fff; border: none; padding: .5rem 1rem; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.um-add-user-btn:hover { background: #e06800; }
+.um-msg { color: #4ade80; font-size: .85rem; }
+.um-table { display: flex; flex-direction: column; gap: 1px; background: #1a1a1a; border-radius: 8px; overflow: hidden; }
+.um-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1.5fr 1fr; gap: .5rem; padding: .7rem 1rem; background: #111; font-size: .85rem; align-items: center; }
+.um-row-header { font-weight: 700; color: #888; background: #0a0a0a; }
+.um-email { word-break: break-all; color: #a0a0ff; }
+.um-row-actions { display: flex; gap: .4rem; }
+.um-row-actions button { background: #222; border: 1px solid #333; border-radius: 4px; padding: .25rem .5rem; color: #ccc; cursor: pointer; font-size: .75rem; }
+.um-row-actions button:hover { background: #333; }
+.um-empty { padding: 2rem; text-align: center; color: #555; }
+.um-form { background: #111; border: 1px solid #2a2a2a; border-radius: 10px; padding: 1.2rem; margin: 1rem 0; }
+.um-form label { display: block; margin-bottom: .8rem; font-size: .85rem; color: #aaa; }
+.um-form input[type="email"], .um-form input[type="text"], .um-form input[type="date"] {
+  display: block; width: 100%; margin-top: .3rem; padding: .45rem .6rem;
+  background: #1a1a1a; border: 1px solid #333; border-radius: 5px; color: #e0e0e0; font-size: .9rem;
+}
+.um-check { display: flex !important; align-items: center; gap: .5rem; flex-direction: row !important; }
+.um-check input { width: auto !important; margin: 0 !important; }
+.um-folders { margin: .8rem 0; }
+.um-folders h4 { font-size: .8rem; color: #888; margin: 0 0 .4rem; }
+.um-folder-row { display: flex; align-items: center; gap: .5rem; padding: .25rem .5rem; background: #1a1a1a; border-radius: 4px; margin-bottom: .3rem; font-size: .82rem; }
+.um-folder-row span { flex: 1; color: #c0c0c0; }
+.um-folder-row button { background: none; border: none; color: #f87171; cursor: pointer; font-size: .9rem; }
+.um-add-btn { background: none; border: 1px dashed #444; color: #888; padding: .3rem .6rem; border-radius: 4px; cursor: pointer; font-size: .78rem; width: 100%; }
+.um-add-btn:hover { border-color: #666; color: #aaa; }
+.um-actions { display: flex; gap: .6rem; margin-top: 1rem; }
+.um-save { background: #FF7A00; color: #fff; border: none; padding: .5rem 1.2rem; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.um-cancel { background: #333; color: #ccc; border: none; padding: .5rem 1rem; border-radius: 6px; cursor: pointer; }
+.um-cli { background: #0a0a0a; border: 1px solid #333; border-radius: 6px; padding: .8rem; margin: .8rem 0; }
+.um-cli h4 { margin: 0 0 .4rem; font-size: .78rem; color: #888; }
+.um-cli pre { font-size: .75rem; color: #4ade80; white-space: pre-wrap; word-break: break-all; margin: 0; }
+.um-cli button { margin-top: .5rem; background: #222; border: 1px solid #444; color: #ccc; padding: .3rem .6rem; border-radius: 4px; cursor: pointer; font-size: .75rem; }
+.um-updated { font-size: .72rem; color: #444; margin-top: 1.5rem; }
+@media (max-width: 767px) {
+  .um-row { grid-template-columns: 1fr; gap: .2rem; }
+  .um-row-header { display: none; }
+}

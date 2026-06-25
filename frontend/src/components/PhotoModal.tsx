@@ -328,7 +328,7 @@ export default function PhotoModal({ photo, onClose, onPrev, onNext, onAddTag, o
           )}
           {(place || date) && (
             <div className="modal-meta">
-              {place && <span className="modal-place">📍 {place}</span>}
+              {place && <span className="modal-place">{place}</span>}
               {date  && <span className="modal-date">{date}</span>}
             </div>
           )}

@@ -22,6 +22,7 @@ import StatisticsView   from './components/StatisticsView';
 import SyncView         from './components/SyncView';
 import TrashView        from './components/TrashView';
 import UsageView        from './components/UsageView';
+import UsersManagementView from './components/UsersManagementView';
 const AUTO_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
 interface InnerProps {
@@ -123,6 +124,11 @@ function AppInner({ signOut, email }: InnerProps) {
               📈 {tr.tabUsage}
             </button>
           )}
+          {isOwner && (
+            <button className={'tab-btn' + (tab === 'users'  ? ' active' : '')} onClick={() => setTab('users')}>
+              👥 Users
+            </button>
+          )}
         </nav>
 
         <div className="topbar-right">
@@ -148,6 +154,7 @@ function AppInner({ signOut, email }: InnerProps) {
             {tab === 'stats'    && <StatisticsView onNavigate={(year, month) => { setTimelineNav({ year, month }); setTab('timeline'); }} />}
 {tab === 'trash'    && <TrashView />}
             {tab === 'usage'    && isOwner && <UsageView />}
+            {tab === 'users'    && isOwner && <UsersManagementView />}
             {tab === 'sync'     && (
               <SyncView
                 status={syncStatus}

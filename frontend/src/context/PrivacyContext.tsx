@@ -5,7 +5,7 @@ import {
 import { fetchAuthSession, getCurrentUser } from 'aws-amplify/auth';
 import { Hub } from 'aws-amplify/utils';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import config from '../config';
+import config, { getDateCutoff, getFolderAccess, isTagAllowedForUser, getAllowedPrefixes } from '../config';
 
 interface PrivateIndex {
   photos: string[];   // photo hashes
@@ -14,6 +14,9 @@ interface PrivateIndex {
 
 interface PrivacyCtx {
   isOwner:            boolean;
+  dateCutoff:         string | null;
+  isTagAllowed:       (tagName: string) => boolean;
+  allowedPrefixes:    string[];
   isPhotoPrivate:     (hash: string) => boolean;
   isAlbumPrivate:     (albumKey: string) => boolean;
   togglePhoto:        (hash: string) => Promise<void>;
@@ -24,6 +27,9 @@ interface PrivacyCtx {
 
 const PrivacyContext = createContext<PrivacyCtx>({
   isOwner:            false,
+  dateCutoff:         null,
+  isTagAllowed:       () => false,
+  allowedPrefixes:    [],
   isPhotoPrivate:     () => false,
   isAlbumPrivate:     () => false,
   togglePhoto:        async () => {},
@@ -36,18 +42,37 @@ const PRIVATE_KEY = 'index/private.json';
 const empty: PrivateIndex = { photos: [], albums: [] };
 
 export function PrivacyProvider({ children }: { children: ReactNode }) {
-  const [data, setData]       = useState<PrivateIndex>(empty);
-  const [isOwner, setIsOwner] = useState(false);
+  const [data, setData]             = useState<PrivateIndex>(empty);
+  const [isOwner, setIsOwner]       = useState(false);
+  const [dateCutoff, setDateCutoff] = useState<string | null>(null);
+  const [folderAccess, setFolderAccess] = useState<ReturnType<typeof getFolderAccess>>(null);
 
   // Determine if current user is the owner — recheck on sign-in/sign-out
   useEffect(() => {
-    const check = () =>
-      getCurrentUser()
-        .then(u => {
-          const email = u.signInDetails?.loginId ?? '';
-          setIsOwner(email.toLowerCase() === config.ownerEmail.toLowerCase());
-        })
-        .catch(() => setIsOwner(false));
+    const check = async () => {
+      try {
+        const u = await getCurrentUser();
+        const email = (u.signInDetails?.loginId ?? '').toLowerCase();
+        setIsOwner(email === config.ownerEmail.toLowerCase());
+        // Try S3 config first, fall back to hardcoded
+        try {
+          const r = await fetch(config.cloudFrontUrl + '/index/users_config.json?nc=' + Date.now());
+          if (r.ok) {
+            const cfg = await r.json();
+            const user = (cfg.users ?? []).find((u: { email: string }) => u.email.toLowerCase() === email);
+            if (user) {
+              setDateCutoff(user.dateCutoff || null);
+              setFolderAccess(user.folderAccess || null);
+              return;
+            }
+          }
+        } catch { /* fall back */ }
+        setDateCutoff(getDateCutoff(email));
+        setFolderAccess(getFolderAccess(email));
+      } catch {
+        setIsOwner(false); setDateCutoff(null); setFolderAccess(null);
+      }
+    };
 
     check();
     const unsub = Hub.listen('auth', ({ payload }) => {
@@ -92,6 +117,9 @@ export function PrivacyProvider({ children }: { children: ReactNode }) {
     await save({ ...data, albums });
   }, [data, save]);
 
+  const isTagAllowed = useCallback((tagName: string) =>
+    isTagAllowedForUser(tagName, folderAccess), [folderAccess]);
+
   const isPhotoPrivate = useCallback((hash: string) =>
     data.photos.includes(hash), [data]);
 
@@ -113,7 +141,7 @@ export function PrivacyProvider({ children }: { children: ReactNode }) {
   }, [data, save]);
 
   return (
-    <PrivacyContext.Provider value={{ isOwner, isPhotoPrivate, isAlbumPrivate, togglePhoto, toggleAlbum, makePhotosPrivate, makePhotosPublic }}>
+    <PrivacyContext.Provider value={{ isOwner, dateCutoff, isTagAllowed, allowedPrefixes: getAllowedPrefixes(folderAccess), isPhotoPrivate, isAlbumPrivate, togglePhoto, toggleAlbum, makePhotosPrivate, makePhotosPublic }}>
       {children}
     </PrivacyContext.Provider>
   );
