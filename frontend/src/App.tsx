@@ -172,11 +172,12 @@ function AppInner({ signOut, email }: InnerProps) {
         </NavProvider>
       </main>
 
-      {summary?.generated && (
-        <footer className="app-footer">
-          🕐 Last indexed: <strong>{new Date(summary.generated).toLocaleString(lang === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</strong>
-        </footer>
-      )}
+      <footer className="app-footer">
+        {summary?.generated && (
+          <>🕐 Last indexed: <strong>{new Date(summary.generated).toLocaleString(lang === 'es' ? 'es-ES' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</strong> · </>
+        )}
+        <span className="app-footer-version">v{__APP_VERSION__} · {__BUILD_DATE__}</span>
+      </footer>
 
 
     </div>
