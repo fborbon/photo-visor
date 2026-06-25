@@ -475,6 +475,7 @@ export function useSync(
       const privateHashes: string[] = [];
       const tagMap: Record<string, { hash: string; s3_key: string; name?: string }[]> = {};
       const sysTagPhotos: Record<string, { hash: string; s3_key: string; thumbKey: string | null }[]> = {};
+      let hasNewSysUploads = false;
       const syncNow   = new Date().toISOString();
       const syncBatch: { hash: string; s3_key: string; name?: string; syncedAt: string }[] = [];
 
@@ -525,6 +526,7 @@ export function useSync(
           }));
 
           uploaded++;
+          if (isSystemPath) hasNewSysUploads = true;
           if (shouldBePrivate) privateHashes.push(hash);
           syncBatch.push({ hash, s3_key: key, name, syncedAt: syncNow });
           patch({ uploaded });
@@ -541,14 +543,16 @@ export function useSync(
         patch({ message: 'Updating photo index…' });
         try { await updateSysIndex(s3, sysTagPhotos); } catch { /* non-fatal */ }
         try { await updatePathTagsAndGeneralIndex(s3, sysTagPhotos); } catch { /* non-fatal */ }
-        // Signal the Lambda to send pending WhatsApp notifications now that sync is done
-        try {
-          await s3.send(new PutObjectCommand({
-            Bucket: config.bucketName, Key: 'photos/_notify_flush.json',
-            Body: JSON.stringify({ ts: new Date().toISOString() }),
-            ContentType: 'application/json',
-          }));
-        } catch { /* non-fatal */ }
+        // Signal the Lambda to send pending WhatsApp notifications only when new photos were uploaded
+        if (hasNewSysUploads) {
+          try {
+            await s3.send(new PutObjectCommand({
+              Bucket: config.bucketName, Key: 'photos/_notify_flush.json',
+              Body: JSON.stringify({ ts: new Date().toISOString() }),
+              ContentType: 'application/json',
+            }));
+          } catch { /* non-fatal */ }
+        }
       }
       patch({ phase: 'done', message: '' });
 
