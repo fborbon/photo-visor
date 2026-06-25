@@ -157,6 +157,14 @@ jobs:
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d \
             > frontend/android/app/upload-keystore.jks
 
+      - name: Set versionCode and versionName
+        run: |
+          VERSION_CODE=$(git rev-list --count HEAD)
+          VERSION_NAME=$(node -p "require('./frontend/package.json').version")
+          sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" frontend/android/app/build.gradle
+          sed -i "s/versionName \"[^\"]*\"/versionName \"$VERSION_NAME\"/" frontend/android/app/build.gradle
+          echo "versionCode=$VERSION_CODE, versionName=$VERSION_NAME"
+
       - name: Build release AAB
         working-directory: frontend/android
         run: ./gradlew bundleRelease
