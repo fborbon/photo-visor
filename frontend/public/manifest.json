@@ -4,7 +4,7 @@
   "id": "/app/",
   "description": "Family photo viewer — map, timeline and tags",
   "start_url": "/app/",
-  "scope": "/app/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "theme_color": "#0f0f0f",
