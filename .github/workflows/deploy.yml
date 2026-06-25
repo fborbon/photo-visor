@@ -173,13 +173,40 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Upload to Play Store (internal testing)
-        uses: r0adkll/upload-google-play@v1.1.3
-        with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: com.photovisor.family
-          releaseFiles: frontend/android/app/build/outputs/bundle/release/app-release.aab
-          track: internal
-          status: completed
+        run: |
+          pip install --quiet google-api-python-client google-auth
+          echo '${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}' > /tmp/play-key.json
+          python3 - <<'PYEOF'
+import json
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+
+SCOPES = ['https://www.googleapis.com/auth/androidpublisher']
+creds = service_account.Credentials.from_service_account_file('/tmp/play-key.json', scopes=SCOPES)
+service = build('androidpublisher', 'v3', credentials=creds)
+
+pkg = 'com.photovisor.family'
+edit = service.edits().insert(packageName=pkg, body={}).execute()
+eid = edit['id']
+
+media = MediaFileUpload(
+    'frontend/android/app/build/outputs/bundle/release/app-release.aab',
+    mimetype='application/octet-stream'
+)
+bundle = service.edits().bundles().upload(packageName=pkg, editId=eid, media_body=media).execute()
+vc = bundle['versionCode']
+print(f'Uploaded versionCode={vc}')
+
+service.edits().tracks().update(
+    packageName=pkg, editId=eid, track='internal',
+    body={'releases': [{'versionCodes': [vc], 'status': 'completed'}]}
+).execute()
+
+service.edits().commit(packageName=pkg, editId=eid).execute()
+print('Published to internal track.')
+PYEOF
+          rm /tmp/play-key.json
 
   # ── Lambda: build package → zip → update function code ─────────────────────
   lambda:
