@@ -311,14 +311,37 @@ def _short_album_url(album_display: str, deep_link: str) -> str:
     # Same for Samsung Internet
     samsung_url = f"samsung-internet://open?url={enc}"
 
+    # intent:// for Chrome specifically — escapes CCT, Chrome then triggers PWA if installed
+    intent_chrome_url = (
+        f"intent://{deep_link.replace('https://', '')}"
+        f"#Intent;scheme=https;package=com.android.chrome;"
+        f"S.browser_fallback_url={enc};end"
+    )
+
     js = f"""
 (async function() {{
-  var deep = {json.dumps(deep_link)};
-  var intent = {json.dumps(intent_url)};
-  var chrome = {json.dumps(chrome_url)};
-  var samsung = {json.dumps(samsung_url)};
+  var deep    = {json.dumps(deep_link)};
+  var enc     = encodeURIComponent(deep);
+  var iNative = {json.dumps(intent_url)};
+  var iChrome = {json.dumps(intent_chrome_url)};
+  var gChrome = {json.dumps(chrome_url)};
+  var gSamsung= {json.dumps(samsung_url)};
 
-  // 1. Detect installed apps (Chrome 84+, Android only)
+  // Click-based nav — works better than window.location for intent:// inside CCT
+  function go(url) {{
+    try {{
+      var a = document.createElement('a');
+      a.href = url; a.style.display = 'none';
+      document.body.appendChild(a); a.click();
+    }} catch(e) {{ window.location = url; }}
+  }}
+
+  // 1. Already inside the PWA/native app → go straight to content
+  if (window.matchMedia('(display-mode: standalone)').matches) {{
+    window.location.replace(deep); return;
+  }}
+
+  // 2. Detect installed related apps (Chrome 84+, Android only)
   var hasNative = false, hasPWA = false;
   if ('getInstalledRelatedApps' in navigator) {{
     try {{
@@ -328,31 +351,21 @@ def _short_album_url(album_display: str, deep_link: str) -> str:
     }} catch(e) {{}}
   }}
 
-  // 2. Already running inside the PWA or native app → go straight to content
-  if (window.matchMedia('(display-mode: standalone)').matches) {{
-    window.location.replace(deep); return;
-  }}
+  // 3. Native APK installed → open via intent (App Links may already intercept)
+  if (hasNative) {{ go(iNative); return; }}
 
-  // 3. Native APK detected → open via intent (or App Links already intercepted)
-  if (hasNative) {{
-    window.location = intent; return;
+  // 4. PWA installed or unknown → escape WhatsApp CCT into Chrome/Samsung Browser
+  //    so Chrome can intercept the URL for the installed PWA WebAPK
+  var ua = navigator.userAgent;
+  if (/SamsungBrowser/.test(ua)) {{
+    go(gSamsung);
+  }} else {{
+    // Try googlechrome:// first, then Chrome intent as backup
+    go(gChrome);
+    setTimeout(function() {{ go(iChrome); }}, 700);
   }}
-
-  // 4. PWA detected → escape CCT into Chrome/Samsung so PWA can intercept
-  if (hasPWA) {{
-    var ua = navigator.userAgent;
-    window.location = /SamsungBrowser/.test(ua) ? samsung : chrome;
-    setTimeout(function() {{ window.location.replace(deep); }}, 800);
-    return;
-  }}
-
-  // 5. No app detected — try intent anyway (native APK fallback to browser)
-  //    then escape to Chrome so PWA prompt can appear
-  try {{ window.location = intent; }} catch(e) {{}}
-  setTimeout(function() {{
-    window.location = chrome;
-    setTimeout(function() {{ window.location.replace(deep); }}, 800);
-  }}, 1200);
+  // Final web fallback
+  setTimeout(function() {{ window.location.replace(deep); }}, 2000);
 }})();
 """
 
@@ -360,6 +373,8 @@ def _short_album_url(album_display: str, deep_link: str) -> str:
         '<!DOCTYPE html><html><head>'
         '<meta charset="utf-8"/>'
         '<meta name="viewport" content="width=device-width,initial-scale=1"/>'
+        # Manifest link enables getInstalledRelatedApps() to detect the PWA
+        '<link rel="manifest" href="/app/manifest.json"/>'
         f'<meta http-equiv="refresh" content="4;url={deep_link}"/>'
         '<style>'
         'body{margin:0;min-height:100vh;display:flex;flex-direction:column;'
