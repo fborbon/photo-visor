@@ -15,5 +15,11 @@
     { "src": "/app/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/app/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
-  "categories": ["photo", "lifestyle"]
+  "categories": ["photo", "lifestyle"],
+  "related_applications": [{
+    "platform": "play",
+    "id": "com.photovisor.family",
+    "url": "https://play.google.com/store/apps/details?id=com.photovisor.family"
+  }],
+  "prefer_related_applications": false
 }

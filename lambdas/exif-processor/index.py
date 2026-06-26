@@ -286,52 +286,97 @@ def _build_thumb_collage(thumb_keys: list[str], album_display: str) -> str | Non
     return f"{CLOUDFRONT_URL}/{key}"
 
 def _short_album_url(album_display: str, deep_link: str) -> str:
-    """Publish a tiny HTML redirect at a/SLUG so the WhatsApp caption stays clean.
+    """Publish a smart redirect page at a/SLUG.
 
-    Priority order on Android:
-      1. Native APK (if installed) — via intent:// URL
-      2. PWA installed in Chrome / Samsung Browser — via opening in the default browser
-      3. Web browser fallback
+    Priority on Android:
+      1. Native APK (App Links — Android intercepts before CCT opens)
+      2. PWA in Chrome — via googlechrome:// scheme to escape WhatsApp CCT
+      3. PWA in Samsung Browser — via samsung-internet:// scheme
+      4. Web browser fallback
     """
+    from urllib.parse import quote as _q
     slug = re.sub(r"[^a-zA-Z0-9_\-]", "_", album_display.split("/")[-1].lower())
     album_short = album_display.split("/")[-1]
     key = f"a/{slug}.html"
+    enc = _q(deep_link, safe='')
 
-    from urllib.parse import quote as _q
-    # intent:// URL: try native APK first; if not installed, fall back to web
+    # intent:// with package — opens native APK; falls back to browser_fallback_url
     intent_url = (
         f"intent://{deep_link.replace('https://', '')}"
         f"#Intent;scheme=https;package=com.photovisor.family;"
-        f"S.browser_fallback_url={_q(deep_link, safe='')};end"
+        f"S.browser_fallback_url={enc};end"
     )
+    # Escape WhatsApp CCT → open in Chrome → Chrome triggers PWA if installed
+    chrome_url  = f"googlechrome://navigate?url={enc}"
+    # Same for Samsung Internet
+    samsung_url = f"samsung-internet://open?url={enc}"
+
+    js = f"""
+(async function() {{
+  var deep = {json.dumps(deep_link)};
+  var intent = {json.dumps(intent_url)};
+  var chrome = {json.dumps(chrome_url)};
+  var samsung = {json.dumps(samsung_url)};
+
+  // 1. Detect installed apps (Chrome 84+, Android only)
+  var hasNative = false, hasPWA = false;
+  if ('getInstalledRelatedApps' in navigator) {{
+    try {{
+      var apps = await navigator.getInstalledRelatedApps();
+      hasNative = apps.some(function(a) {{ return a.id === 'com.photovisor.family'; }});
+      hasPWA    = apps.some(function(a) {{ return a.platform === 'webapp'; }});
+    }} catch(e) {{}}
+  }}
+
+  // 2. Already running inside the PWA or native app → go straight to content
+  if (window.matchMedia('(display-mode: standalone)').matches) {{
+    window.location.replace(deep); return;
+  }}
+
+  // 3. Native APK detected → open via intent (or App Links already intercepted)
+  if (hasNative) {{
+    window.location = intent; return;
+  }}
+
+  // 4. PWA detected → escape CCT into Chrome/Samsung so PWA can intercept
+  if (hasPWA) {{
+    var ua = navigator.userAgent;
+    window.location = /SamsungBrowser/.test(ua) ? samsung : chrome;
+    setTimeout(function() {{ window.location.replace(deep); }}, 800);
+    return;
+  }}
+
+  // 5. No app detected — try intent anyway (native APK fallback to browser)
+  //    then escape to Chrome so PWA prompt can appear
+  try {{ window.location = intent; }} catch(e) {{}}
+  setTimeout(function() {{
+    window.location = chrome;
+    setTimeout(function() {{ window.location.replace(deep); }}, 800);
+  }}, 1200);
+}})();
+"""
 
     html = (
         '<!DOCTYPE html><html><head>'
         '<meta charset="utf-8"/>'
         '<meta name="viewport" content="width=device-width,initial-scale=1"/>'
-        # Fallback meta-refresh after 3 s in case JS is disabled
-        f'<meta http-equiv="refresh" content="3;url={deep_link}"/>'
+        f'<meta http-equiv="refresh" content="4;url={deep_link}"/>'
         '<style>'
         'body{margin:0;min-height:100vh;display:flex;flex-direction:column;'
         'align-items:center;justify-content:center;background:#1a1a2e;'
         'font-family:system-ui,sans-serif;color:#e0e0e0;padding:24px;box-sizing:border-box}'
-        '.emoji{font-size:72px;animation:spin 2s linear infinite}'
-        '@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}'
+        '.emoji{font-size:72px;animation:pulse 1.5s ease-in-out infinite}'
+        '@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}'
         'p{font-size:17px;margin:16px 0 4px;opacity:.75;text-align:center}'
-        'a.btn{display:inline-block;margin-top:20px;padding:12px 28px;'
+        'a.btn{display:inline-block;margin-top:24px;padding:13px 32px;'
         'background:#4a9eff;color:#fff;border-radius:24px;text-decoration:none;'
-        'font-size:15px;font-weight:600}'
+        'font-size:15px;font-weight:600;letter-spacing:.3px}'
         '</style>'
         '</head><body>'
-        f'<div class="emoji">&#128247;</div>'
-        f'<p>Opening <strong>{album_short}</strong>…</p>'
+        '<div class="emoji">&#128247;</div>'
+        f'<p>Opening <strong>{album_short}</strong>&hellip;</p>'
         f'<a class="btn" href="{deep_link}">Open in browser</a>'
-        '<script>'
-        # Try native APK via intent://, then fall through to meta-refresh web URL
-        f'try{{window.location="{intent_url}"}}catch(e){{}}'
-        # After 1 s, redirect in browser (covers PWA interception in Chrome)
-        f'setTimeout(function(){{window.location.replace("{deep_link}")}},1000);'
-        '</script>'
+        f'<script>{js}</script>'
         '</body></html>'
     )
     s3.put_object(Bucket=BUCKET, Key=key, Body=html.encode(),
