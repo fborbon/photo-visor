@@ -241,7 +241,7 @@ export default function MapView({ displayName }: { displayName?: string }) {
   const { pendingNav, clearNav } = useNav();
   const { systemTagIndex } = useTags();
   const { lang, tr }       = useLang();
-  const { isOwner, isTagAllowed } = usePrivacy();
+  const { isOwner, isTagAllowed, dateCutoff } = usePrivacy();
   const { isFavorite, toggleFavorite } = useFavorites();
 
   // One marker per geographic location. All system tags that resolve to the same
@@ -256,6 +256,7 @@ export default function MapView({ displayName }: { displayName?: string }) {
 
     for (const [name, meta] of Object.entries(systemTagIndex.tags)) {
       if (!isOwner && !meta.public && !isTagAllowed(name)) continue;
+      if (dateCutoff && meta.latest_dt && meta.latest_dt < dateCutoff) continue;
       const country = sysTagCountryKey(name);
       const city    = sysTagCityKey(name);
       const coords: [number, number] | null =
@@ -278,7 +279,7 @@ export default function MapView({ displayName }: { displayName?: string }) {
       key,
       count: loc.albums.reduce((s, a) => s + a.count, 0),
     }));
-  }, [systemTagIndex, isOwner]);
+  }, [systemTagIndex, isOwner, isTagAllowed, dateCutoff]);
 
   // When this tab activates with a pending nav: find the right pin and open it.
   useEffect(() => {

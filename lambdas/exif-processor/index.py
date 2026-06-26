@@ -514,17 +514,36 @@ def _update_path_tags_and_general(album_path: str, hash_str: str, photo_entry: d
             gen_data = []
     except Exception:
         gen_data = []
-    is_new_photo = not any(p.get("hash") == hash_str for p in gen_data)
+    existing_idx = next((i for i, p in enumerate(gen_data) if p.get("hash") == hash_str), None)
+    is_new_photo = existing_idx is None
+    is_stub_fill = False  # stub upgraded to real photo (not a duplicate removal)
     if is_new_photo:
         gen_data.append({**photo_entry, "folder": inner,
                          "path": "Camera/" + inner + "/_"})
+        gen_data.sort(key=lambda p: p.get("dt") or "9999")
+        _write_json(gen_key, gen_data, "no-cache, no-store, must-revalidate")
+    elif not gen_data[existing_idx].get("dt") and photo_entry.get("dt"):
+        # Stub entry exists but has no EXIF yet — check for an exact-second duplicate first.
+        new_dt = photo_entry["dt"]
+        is_dupe = any(
+            i != existing_idx and p.get("dt") == new_dt
+            for i, p in enumerate(gen_data)
+        )
+        if is_dupe:
+            gen_data.pop(existing_idx)
+        else:
+            gen_data[existing_idx] = {**gen_data[existing_idx], **{k: v for k, v in photo_entry.items() if v is not None}, "folder": inner, "path": "Camera/" + inner + "/_"}
+            is_stub_fill = True
+        gen_data.sort(key=lambda p: p.get("dt") or "9999")
         _write_json(gen_key, gen_data, "no-cache, no-store, must-revalidate")
 
-    # Notify via WhatsApp: new album, or new photos added to an existing one
+    # Notify via WhatsApp: new album, or new photos added to an existing one.
+    # is_stub_fill covers the common case where the phone creates a stub before
+    # uploading the file — Lambda fills the stub, which counts as a new photo.
     album_display = "Camera/" + inner
     is_new_album  = album_display in {e["display"] for e in to_add}
     try:
-        if is_new_album or is_new_photo:
+        if is_new_album or is_new_photo or is_stub_fill:
             _notify_album_update(album_display, is_new=is_new_album, thumb_key=photo_entry.get("thumb"))
     except Exception as e:
         print(f"Album notify error: {e}")

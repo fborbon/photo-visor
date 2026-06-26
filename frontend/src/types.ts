@@ -103,11 +103,12 @@ export interface SharedTags {
 }
 
 export interface SystemTagMeta {
-  count:  number;
-  slug:   string;
-  public?: boolean;  // true = Camera/ origin (visible to all); false/absent = .Amigos/.Whatsapp (owner only)
-  lat?:   number | null;   // avg latitude  from photos with GPS — more accurate than hardcoded table
-  lng?:   number | null;   // avg longitude from photos with GPS
+  count:     number;
+  slug:      string;
+  public?:   boolean;  // true = Camera/ origin (visible to all); false/absent = .Amigos/.Whatsapp (owner only)
+  lat?:      number | null;   // avg latitude  from photos with GPS — more accurate than hardcoded table
+  lng?:      number | null;   // avg longitude from photos with GPS
+  latest_dt?: string | null;  // ISO datetime of newest photo in this tag (for date-cutoff filtering)
 }
 
 export interface SystemTagIndex {

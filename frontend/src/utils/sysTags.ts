@@ -638,6 +638,7 @@ const SYS_TAG_COORDS: Record<string, [number, number]> = {
   'Suiza:':              [ 46.9480,    7.4474],  // Bern (capital fallback)
   'Suiza:Ginebra':       [ 46.2044,    6.1432],
   'Suiza:Geneva':        [ 46.2044,    6.1432],
+  'Suiza:Aarau':         [ 47.3927,    8.0444],
   'Suiza:Holderbank':    [ 47.4000,    8.1333],  // village in Aargau canton
   'Suiza:Zurich':        [ 47.3769,    8.5417],
   'Suiza:Zúrich':        [ 47.3769,    8.5417],

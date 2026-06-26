@@ -86,6 +86,44 @@ User 0:
 
 ---
 
+## Alternative: Set up from the phone UI (no PC required)
+
+If you don't have a computer handy, you can enable link handling directly from the phone's settings. The steps differ slightly between the native APK and the PWA.
+
+### Case A: Native APK installed
+
+1. Open **Settings → Apps**.
+2. Tap the search icon and search for **Photo Visor**, then tap it.
+3. Scroll down to **Open by default** (on Samsung: **Set as default**).
+4. Tap **Add link** (or **Supported web addresses**).
+5. Make sure `fotos.forwardforecasting.eu` is checked, then tap **Add**.
+
+From now on tapping a `fotos.forwardforecasting.eu` link will open the APK directly.
+
+### Case B: PWA installed via Samsung Browser (WebAPK)
+
+Samsung Browser WebAPKs are listed as normal apps in Settings, but under their generated name.
+
+1. Open **Settings → Apps**.
+2. Tap the search icon and type **Photo Visor** — the PWA entry may appear as *"Photo Visor"* or *"fotos.forwardforecasting.eu"*.
+3. Tap the PWA entry → **Open by default** → **Add link**.
+4. Check `fotos.forwardforecasting.eu` and tap **Add**.
+
+> **If the PWA doesn't appear in the search:** go to **Settings → Apps → ⋮ (three dots) → Show system apps**, then search again.
+
+### Case C: PWA installed via Chrome (WebAPK)
+
+Chrome-installed WebAPKs follow the same flow:
+
+1. **Settings → Apps**, search for **Photo Visor**.
+2. Tap it → **Open by default** → **Add link** → check `fotos.forwardforecasting.eu` → **Add**.
+
+### Verify it worked (any case)
+
+Open WhatsApp, find a Photo Visor notification message, and tap the link. It should open the app without going through the browser. If it still opens in a browser, go back to **Open by default** and confirm the domain is listed under **Enabled links**.
+
+---
+
 ## Step 3 — Test
 
 Ask someone to send a Photo Visor album link (e.g. from a WhatsApp notification) and tap it. It should open the Photo Visor app directly without going through the browser.

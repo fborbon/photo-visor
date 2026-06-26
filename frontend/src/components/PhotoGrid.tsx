@@ -124,7 +124,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   const albumPrivate = albumKey ? isAlbumPrivate(albumKey) : false;
   const filtered = photos.filter(p => {
     if (isTrashed(p.hash)) return false;
-    if (dateCutoff && p.dt && p.dt < dateCutoff) return false;
+    if (dateCutoff && (!p.dt || p.dt < dateCutoff)) return false;
     if (isOwner) return true;
     const photoPath = p.path ?? p.folder ?? '';
     if (isTagAllowed(photoPath)) return true;

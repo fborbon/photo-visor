@@ -286,24 +286,117 @@ def _build_thumb_collage(thumb_keys: list[str], album_display: str) -> str | Non
     return f"{CLOUDFRONT_URL}/{key}"
 
 def _short_album_url(album_display: str, deep_link: str) -> str:
-    """Publish a tiny HTML redirect at a/SLUG so the WhatsApp caption stays clean."""
+    """Publish a smart redirect page at a/SLUG.
+
+    Priority on Android:
+      1. Native APK (App Links — Android intercepts before CCT opens)
+      2. PWA in Chrome — via googlechrome:// scheme to escape WhatsApp CCT
+      3. PWA in Samsung Browser — via samsung-internet:// scheme
+      4. Web browser fallback
+    """
+    from urllib.parse import quote as _q
     slug = re.sub(r"[^a-zA-Z0-9_\-]", "_", album_display.split("/")[-1].lower())
     album_short = album_display.split("/")[-1]
     key = f"a/{slug}.html"
+    enc = _q(deep_link, safe='')
+
+    # intent:// with package — opens native APK; falls back to browser_fallback_url
+    intent_url = (
+        f"intent://{deep_link.replace('https://', '')}"
+        f"#Intent;scheme=https;package=com.photovisor.family;"
+        f"S.browser_fallback_url={enc};end"
+    )
+    # Escape WhatsApp CCT → open in Chrome → Chrome triggers PWA if installed
+    chrome_url  = f"googlechrome://navigate?url={enc}"
+    # Same for Samsung Internet
+    samsung_url = f"samsung-internet://open?url={enc}"
+
+    # intent:// for Chrome — escapes CCT, Chrome then triggers PWA if installed
+    intent_chrome_url = (
+        f"intent://{deep_link.replace('https://', '')}"
+        f"#Intent;scheme=https;package=com.android.chrome;"
+        f"S.browser_fallback_url={enc};end"
+    )
+    # intent:// directly to Samsung WebAPK (device-specific package stored in assetlinks.json)
+    intent_samsung_webapk_url = (
+        f"intent://{deep_link.replace('https://', '')}"
+        f"#Intent;scheme=https;"
+        f"package=com.sec.android.app.sbrowser.webapk.wb7487e39b203264614b64d39b5b928aa1;"
+        f"S.browser_fallback_url={enc};end"
+    )
+
+    js = f"""
+(async function() {{
+  var deep       = {json.dumps(deep_link)};
+  var iNative    = {json.dumps(intent_url)};
+  var iChrome    = {json.dumps(intent_chrome_url)};
+  var iSamsungWA = {json.dumps(intent_samsung_webapk_url)};
+  var gChrome    = {json.dumps(chrome_url)};
+
+  // Click-based nav — works better than window.location for intent:// inside CCT
+  function go(url) {{
+    try {{
+      var a = document.createElement('a');
+      a.href = url; a.style.display = 'none';
+      document.body.appendChild(a); a.click();
+    }} catch(e) {{ window.location = url; }}
+  }}
+
+  // 1. Already inside the PWA/native app → go straight to content
+  if (window.matchMedia('(display-mode: standalone)').matches) {{
+    window.location.replace(deep); return;
+  }}
+
+  // 2. Detect installed related apps (Chrome 84+, Android only)
+  var hasNative = false, hasPWA = false;
+  if ('getInstalledRelatedApps' in navigator) {{
+    try {{
+      var apps = await navigator.getInstalledRelatedApps();
+      hasNative = apps.some(function(a) {{ return a.id === 'com.photovisor.family'; }});
+      hasPWA    = apps.some(function(a) {{ return a.platform === 'webapp'; }});
+    }} catch(e) {{}}
+  }}
+
+  // 3. Native APK installed → open via intent
+  if (hasNative) {{ go(iNative); return; }}
+
+  var ua = navigator.userAgent;
+  if (/SamsungBrowser/.test(ua)) {{
+    // 4a. Samsung Browser CCT → open Samsung WebAPK directly by package name
+    go(iSamsungWA);
+  }} else {{
+    // 4b. Chrome CCT → escape to full Chrome (Chrome detects PWA WebAPK)
+    go(gChrome);
+    setTimeout(function() {{ go(iChrome); }}, 700);
+  }}
+  // Final web fallback
+  setTimeout(function() {{ window.location.replace(deep); }}, 2500);
+}})();
+"""
+
     html = (
         '<!DOCTYPE html><html><head>'
-        f'<meta http-equiv="refresh" content="1;url={deep_link}"/>'
+        '<meta charset="utf-8"/>'
+        '<meta name="viewport" content="width=device-width,initial-scale=1"/>'
+        # Manifest link enables getInstalledRelatedApps() to detect the PWA
+        '<link rel="manifest" href="/app/manifest.json"/>'
+        f'<meta http-equiv="refresh" content="4;url={deep_link}"/>'
         '<style>'
-        'body{margin:0;height:100vh;display:flex;flex-direction:column;'
+        'body{margin:0;min-height:100vh;display:flex;flex-direction:column;'
         'align-items:center;justify-content:center;background:#1a1a2e;'
-        'font-family:system-ui,sans-serif;color:#e0e0e0}'
-        '.emoji{font-size:80px;animation:spin 2s linear infinite}'
-        '@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}'
-        'p{font-size:18px;margin-top:20px;opacity:.7}'
+        'font-family:system-ui,sans-serif;color:#e0e0e0;padding:24px;box-sizing:border-box}'
+        '.emoji{font-size:72px;animation:pulse 1.5s ease-in-out infinite}'
+        '@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}'
+        'p{font-size:17px;margin:16px 0 4px;opacity:.75;text-align:center}'
+        'a.btn{display:inline-block;margin-top:24px;padding:13px 32px;'
+        'background:#4a9eff;color:#fff;border-radius:24px;text-decoration:none;'
+        'font-size:15px;font-weight:600;letter-spacing:.3px}'
         '</style>'
         '</head><body>'
-        f'<div class="emoji">&#9203;</div>'
-        f'<p>Opening *{album_short}*...</p>'
+        '<div class="emoji">&#128247;</div>'
+        f'<p>Opening <strong>{album_short}</strong>&hellip;</p>'
+        f'<a class="btn" href="{deep_link}">Open in browser</a>'
+        f'<script>{js}</script>'
         '</body></html>'
     )
     s3.put_object(Bucket=BUCKET, Key=key, Body=html.encode(),
@@ -421,17 +514,36 @@ def _update_path_tags_and_general(album_path: str, hash_str: str, photo_entry: d
             gen_data = []
     except Exception:
         gen_data = []
-    is_new_photo = not any(p.get("hash") == hash_str for p in gen_data)
+    existing_idx = next((i for i, p in enumerate(gen_data) if p.get("hash") == hash_str), None)
+    is_new_photo = existing_idx is None
+    is_stub_fill = False  # stub upgraded to real photo (not a duplicate removal)
     if is_new_photo:
         gen_data.append({**photo_entry, "folder": inner,
                          "path": "Camera/" + inner + "/_"})
+        gen_data.sort(key=lambda p: p.get("dt") or "9999")
+        _write_json(gen_key, gen_data, "no-cache, no-store, must-revalidate")
+    elif not gen_data[existing_idx].get("dt") and photo_entry.get("dt"):
+        # Stub entry exists but has no EXIF yet — check for an exact-second duplicate first.
+        new_dt = photo_entry["dt"]
+        is_dupe = any(
+            i != existing_idx and p.get("dt") == new_dt
+            for i, p in enumerate(gen_data)
+        )
+        if is_dupe:
+            gen_data.pop(existing_idx)
+        else:
+            gen_data[existing_idx] = {**gen_data[existing_idx], **{k: v for k, v in photo_entry.items() if v is not None}, "folder": inner, "path": "Camera/" + inner + "/_"}
+            is_stub_fill = True
+        gen_data.sort(key=lambda p: p.get("dt") or "9999")
         _write_json(gen_key, gen_data, "no-cache, no-store, must-revalidate")
 
-    # Notify via WhatsApp: new album, or new photos added to an existing one
+    # Notify via WhatsApp: new album, or new photos added to an existing one.
+    # is_stub_fill covers the common case where the phone creates a stub before
+    # uploading the file — Lambda fills the stub, which counts as a new photo.
     album_display = "Camera/" + inner
     is_new_album  = album_display in {e["display"] for e in to_add}
     try:
-        if is_new_album or is_new_photo:
+        if is_new_album or is_new_photo or is_stub_fill:
             _notify_album_update(album_display, is_new=is_new_album, thumb_key=photo_entry.get("thumb"))
     except Exception as e:
         print(f"Album notify error: {e}")
