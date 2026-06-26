@@ -31,14 +31,27 @@ bundle = service.edits().bundles().upload(packageName=PKG, editId=eid, media_bod
 vc = bundle["versionCode"]
 print(f"Uploaded versionCode={vc}, versionName={version_name}")
 
+release_body = {
+    "versionCodes": [vc],
+    "status": "completed",
+    "releaseNotes": [{"language": "en-US", "text": f"Version {version_name}"}],
+}
+
+# Always publish to internal testing (guaranteed to work)
 service.edits().tracks().update(
-    packageName=PKG, editId=eid, track="production",
-    body={"releases": [{
-        "versionCodes": [vc],
-        "status": "completed",
-        "releaseNotes": [{"language": "en-US", "text": f"Version {version_name}"}],
-    }]},
+    packageName=PKG, editId=eid, track="internal",
+    body={"releases": [release_body]},
 ).execute()
 
+# Also attempt production; fails gracefully if store listing is incomplete
+try:
+    service.edits().tracks().update(
+        packageName=PKG, editId=eid, track="production",
+        body={"releases": [release_body]},
+    ).execute()
+    print(f"Published v{version_name} to production track.")
+except Exception as e:
+    print(f"Production track skipped ({e}). Complete the Play Store listing to enable auto-production releases.")
+
 service.edits().commit(packageName=PKG, editId=eid).execute()
-print(f"Published v{version_name} to production track.")
+print(f"Published v{version_name} to internal testing track.")
