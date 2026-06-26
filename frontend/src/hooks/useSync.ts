@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { fetchAuthSession, getCurrentUser } from 'aws-amplify/auth';
-import { S3Client, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, HeadObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import config from '../config';
 import type { AlbumConfig, AlbumItem, UserTags, PhotoEntry, SystemTagMeta } from '../types';
 
@@ -214,6 +214,22 @@ async function updatePathTagsAndGeneralIndex(
         Body: JSON.stringify([...existing, ...newPhotos]),
         ContentType: 'application/json', CacheControl: 'no-cache, no-store, must-revalidate',
       }));
+      // Re-copy each new stub photo in-place to add album-path metadata, triggering Lambda to fill EXIF.
+      // Safe to run even if the photo was just uploaded (Lambda processes idempotently).
+      for (const p of newPhotos) {
+        const albumPath = encodeURI('Camera/' + p.folder);
+        try {
+          await s3.send(new CopyObjectCommand({
+            Bucket:            config.bucketName,
+            CopySource:        encodeURIComponent(config.bucketName) + '/' + p.s3_key,
+            Key:               p.s3_key,
+            MetadataDirective: 'REPLACE',
+            StorageClass:      'GLACIER_IR',
+            ContentType:       p.s3_key.match(/\.(mp4|mov)$/i) ? 'video/mp4' : 'image/jpeg',
+            Metadata:          { 'album-path': albumPath },
+          }));
+        } catch { /* non-fatal: Lambda will process on next new upload if this fails */ }
+      }
     }
   }
 }
@@ -435,7 +451,7 @@ export function useSync(
           const shouldBePrivate = false;
           const tagName         = deriveTagName(cfg, album.name);
           const hasForce        = (cfg.forcePath ?? '').trim();
-          const isSystemPath    = !!hasForce && tagName.startsWith('Camera/');
+          const isSystemPath    = tagName.startsWith('Camera/');
           const imgFiles        = files.filter(f => IMAGE_EXTS.test(f.name));
           debugLines.push(`✓ ${album.name}: ${imgFiles.length} photos`);
 
