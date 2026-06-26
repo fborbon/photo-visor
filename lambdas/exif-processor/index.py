@@ -311,21 +311,27 @@ def _short_album_url(album_display: str, deep_link: str) -> str:
     # Same for Samsung Internet
     samsung_url = f"samsung-internet://open?url={enc}"
 
-    # intent:// for Chrome specifically — escapes CCT, Chrome then triggers PWA if installed
+    # intent:// for Chrome — escapes CCT, Chrome then triggers PWA if installed
     intent_chrome_url = (
         f"intent://{deep_link.replace('https://', '')}"
         f"#Intent;scheme=https;package=com.android.chrome;"
         f"S.browser_fallback_url={enc};end"
     )
+    # intent:// directly to Samsung WebAPK (device-specific package stored in assetlinks.json)
+    intent_samsung_webapk_url = (
+        f"intent://{deep_link.replace('https://', '')}"
+        f"#Intent;scheme=https;"
+        f"package=com.sec.android.app.sbrowser.webapk.wb7487e39b203264614b64d39b5b928aa1;"
+        f"S.browser_fallback_url={enc};end"
+    )
 
     js = f"""
 (async function() {{
-  var deep    = {json.dumps(deep_link)};
-  var enc     = encodeURIComponent(deep);
-  var iNative = {json.dumps(intent_url)};
-  var iChrome = {json.dumps(intent_chrome_url)};
-  var gChrome = {json.dumps(chrome_url)};
-  var gSamsung= {json.dumps(samsung_url)};
+  var deep       = {json.dumps(deep_link)};
+  var iNative    = {json.dumps(intent_url)};
+  var iChrome    = {json.dumps(intent_chrome_url)};
+  var iSamsungWA = {json.dumps(intent_samsung_webapk_url)};
+  var gChrome    = {json.dumps(chrome_url)};
 
   // Click-based nav — works better than window.location for intent:// inside CCT
   function go(url) {{
@@ -351,21 +357,20 @@ def _short_album_url(album_display: str, deep_link: str) -> str:
     }} catch(e) {{}}
   }}
 
-  // 3. Native APK installed → open via intent (App Links may already intercept)
+  // 3. Native APK installed → open via intent
   if (hasNative) {{ go(iNative); return; }}
 
-  // 4. PWA installed or unknown → escape WhatsApp CCT into Chrome/Samsung Browser
-  //    so Chrome can intercept the URL for the installed PWA WebAPK
   var ua = navigator.userAgent;
   if (/SamsungBrowser/.test(ua)) {{
-    go(gSamsung);
+    // 4a. Samsung Browser CCT → open Samsung WebAPK directly by package name
+    go(iSamsungWA);
   }} else {{
-    // Try googlechrome:// first, then Chrome intent as backup
+    // 4b. Chrome CCT → escape to full Chrome (Chrome detects PWA WebAPK)
     go(gChrome);
     setTimeout(function() {{ go(iChrome); }}, 700);
   }}
   // Final web fallback
-  setTimeout(function() {{ window.location.replace(deep); }}, 2000);
+  setTimeout(function() {{ window.location.replace(deep); }}, 2500);
 }})();
 """
 
