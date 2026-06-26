@@ -1944,6 +1944,10 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 
 .sync-albums-section  { display: flex; flex-direction: column; gap: .75rem; }
 .sync-album-list      { display: flex; flex-direction: column; gap: .6rem; }
+.sync-album-select-all { display: flex; justify-content: flex-end; }
+.sync-select-all-btn  { background: none; border: 1px solid #374151; color: #9ca3af; font-size: .75rem; border-radius: .35rem; padding: .2rem .7rem; cursor: pointer; }
+.sync-select-all-btn:not(:disabled):hover { background: #1f2937; color: #e5e7eb; }
+.sync-select-all-btn:disabled { opacity: .4; cursor: default; }
 
 .sync-album-row {
   background: #111827;

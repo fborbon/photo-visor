@@ -26,8 +26,16 @@ function formatRelative(date: Date): string {
 }
 
 function loadSavedConfigs(): Record<string, AlbumConfig> {
-  try { return JSON.parse(localStorage.getItem(ALBUM_CONFIG_KEY) ?? '{}'); }
-  catch { return {}; }
+  try {
+    const saved: Record<string, AlbumConfig> = JSON.parse(localStorage.getItem(ALBUM_CONFIG_KEY) ?? '{}');
+    // Migration: if every saved album has sync:true, the old default leaked into storage — reset.
+    const entries = Object.values(saved);
+    if (entries.length > 0 && entries.every(c => c.sync)) {
+      localStorage.removeItem(ALBUM_CONFIG_KEY);
+      return {};
+    }
+    return saved;
+  } catch { return {}; }
 }
 
 function saveConfigs(configs: Record<string, AlbumConfig>) {
@@ -35,7 +43,7 @@ function saveConfigs(configs: Record<string, AlbumConfig>) {
 }
 
 function defaultConfig(): AlbumConfig {
-  return { sync: true, location: '', forcePath: '', createFolder: true };
+  return { sync: false, location: '', forcePath: '', createFolder: true };
 }
 
 export default function SyncView({
@@ -100,7 +108,7 @@ export default function SyncView({
   };
 
   const canSync = isNative
-    ? albums.length === 0 || albums.some(a => getConfig(a).sync)
+    ? albums.length > 0 && albums.some(a => getConfig(a).sync)
     : desktopFiles.length > 0;
 
   const imageCount = isNative
@@ -132,6 +140,21 @@ export default function SyncView({
 
           {albums.length > 0 && (
             <div className="sync-album-list">
+              <div className="sync-album-select-all">
+                <button
+                  className="sync-select-all-btn"
+                  disabled={isRunning}
+                  onClick={() => {
+                    const noneChecked = albums.every(a => !albumConfigs[a.identifier]?.sync);
+                    albums.forEach(a => {
+                      if (!a.isCamera) updateAlbumConfig(a.identifier, { sync: noneChecked });
+                    });
+                  }}
+                >
+                  {albums.every(a => a.isCamera || albumConfigs[a.identifier]?.sync)
+                    ? 'Deselect all' : 'Select all'}
+                </button>
+              </div>
               {albums.map(album => {
                 const cfg = getConfig(album);
                 const tag = deriveTagName(cfg, album.name);
