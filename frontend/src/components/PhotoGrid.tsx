@@ -131,7 +131,9 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
     return !isPhotoPrivate(p.hash) && !albumPrivate;
   });
   const visible = sortOrder === 'default' ? filtered : [...filtered].sort((a, b) => {
-    const da = a.dt ?? '', db = b.dt ?? '';
+    // Entries with no date (stubs pending Lambda) always sort last.
+    const da = a.dt ?? (sortOrder === 'oldest' ? '￿' : '');
+    const db = b.dt ?? (sortOrder === 'oldest' ? '￿' : '');
     return sortOrder === 'oldest' ? da.localeCompare(db) : db.localeCompare(da);
   });
 

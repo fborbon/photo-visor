@@ -209,9 +209,12 @@ async function updatePathTagsAndGeneralIndex(
         w: null, h: null, video_proxy: null,
       }));
     if (newPhotos.length > 0) {
+      const merged = [...existing, ...newPhotos].sort((a, b) =>
+        (a.dt ?? '￿').localeCompare(b.dt ?? '￿')
+      );
       await s3.send(new PutObjectCommand({
         Bucket: config.bucketName, Key: 'index/general/' + folderKey + '.json',
-        Body: JSON.stringify([...existing, ...newPhotos]),
+        Body: JSON.stringify(merged),
         ContentType: 'application/json', CacheControl: 'no-cache, no-store, must-revalidate',
       }));
       // Re-copy each new stub photo in-place to add album-path metadata, triggering Lambda to fill EXIF.
