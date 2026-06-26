@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CI script: upload release AAB to Play Store internal testing track.
+"""CI script: upload release AAB to Play Store production track.
 
 Reads PLAY_KEY_FILE env var (path to service account JSON).
 """
@@ -29,9 +29,9 @@ vc = bundle["versionCode"]
 print(f"Uploaded versionCode={vc}")
 
 service.edits().tracks().update(
-    packageName=PKG, editId=eid, track="internal",
+    packageName=PKG, editId=eid, track="production",
     body={"releases": [{"versionCodes": [vc], "status": "completed"}]},
 ).execute()
 
 service.edits().commit(packageName=PKG, editId=eid).execute()
-print("Published to internal testing track.")
+print("Published to production track.")
