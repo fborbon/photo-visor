@@ -1915,6 +1915,9 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .sync-stat--up   { color: #7ed; }
 .sync-stat--skip { color: #999; }
 .sync-stat--fail { color: #e88; }
+.sync-failed-files { margin-top: .6rem; border-top: 1px solid #374151; padding-top: .5rem; }
+.sync-failed-files-label { font-size: .7rem; color: #f87171; margin-bottom: .3rem; }
+.sync-failed-file { font-size: .7rem; color: #9ca3af; font-family: monospace; padding: .1rem 0; }
 
 /* Pulsing indicator on the tab button while sync is running */
 .tab-btn--syncing { animation: tab-pulse 1.2s ease-in-out infinite; }

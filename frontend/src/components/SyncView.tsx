@@ -335,11 +335,19 @@ export default function SyncView({
           ) : status.message === 'none' ? (
             <span>✅ {tr.syncNoNew}</span>
           ) : (
-            <div className="sync-stats">
-              {status.uploaded > 0 && <span className="sync-stat sync-stat--up">⬆ {status.uploaded} {tr.syncUploaded}</span>}
-              {status.skipped  > 0 && <span className="sync-stat sync-stat--skip">☑ {status.skipped} {tr.syncSkipped}</span>}
-              {status.failed   > 0 && <span className="sync-stat sync-stat--fail">✕ {status.failed} {tr.syncFailed}</span>}
-            </div>
+            <>
+              <div className="sync-stats">
+                {status.uploaded > 0 && <span className="sync-stat sync-stat--up">⬆ {status.uploaded} {tr.syncUploaded}</span>}
+                {status.skipped  > 0 && <span className="sync-stat sync-stat--skip">☑ {status.skipped} {tr.syncSkipped}</span>}
+                {status.failed   > 0 && <span className="sync-stat sync-stat--fail">✕ {status.failed} {tr.syncFailed}</span>}
+              </div>
+              {status.failedFiles.length > 0 && (
+                <div className="sync-failed-files">
+                  <div className="sync-failed-files-label">Could not read ({status.failedFiles.length}) — open each in gallery to download from cloud, then re-sync:</div>
+                  {status.failedFiles.map(f => <div key={f} className="sync-failed-file">{f}</div>)}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

@@ -236,17 +236,18 @@ function makeS3(): S3Client {
 }
 
 export interface SyncStatus {
-  phase:     'idle' | 'enumerating' | 'syncing' | 'done' | 'error';
-  total:     number;
-  processed: number;
-  uploaded:  number;
-  skipped:   number;
-  failed:    number;
-  message:   string;
+  phase:       'idle' | 'enumerating' | 'syncing' | 'done' | 'error';
+  total:       number;
+  processed:   number;
+  uploaded:    number;
+  skipped:     number;
+  failed:      number;
+  message:     string;
+  failedFiles: string[];
 }
 
 const IDLE: SyncStatus = {
-  phase: 'idle', total: 0, processed: 0, uploaded: 0, skipped: 0, failed: 0, message: '',
+  phase: 'idle', total: 0, processed: 0, uploaded: 0, skipped: 0, failed: 0, message: '', failedFiles: [],
 };
 
 export function useSync(
@@ -472,6 +473,7 @@ export function useSync(
       // ── 3. Upload ─────────────────────────────────────────────────────
       const s3 = makeS3();
       let uploaded = 0, skipped = 0, failed = 0;
+      const failedFiles: string[] = [];
       const privateHashes: string[] = [];
       const tagMap: Record<string, { hash: string; s3_key: string; name?: string }[]> = {};
       const sysTagPhotos: Record<string, { hash: string; s3_key: string; thumbKey: string | null }[]> = {};
@@ -532,7 +534,8 @@ export function useSync(
           patch({ uploaded });
         } catch {
           failed++;
-          patch({ failed });
+          failedFiles.push(name);
+          patch({ failed, failedFiles: [...failedFiles] });
         }
       }
 
