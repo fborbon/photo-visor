@@ -30,7 +30,9 @@ function loadSavedConfigs(): Record<string, AlbumConfig> {
     const saved: Record<string, AlbumConfig> = JSON.parse(localStorage.getItem(ALBUM_CONFIG_KEY) ?? '{}');
     // Migration: if every saved album has sync:true, the old default leaked into storage — reset.
     const entries = Object.values(saved);
-    if (entries.length > 0 && entries.every(c => c.sync)) {
+    // Only wipe the old "all auto-enabled with no path configured" default state.
+    // A config with a location or forcePath is a legitimate user setting — preserve it.
+    if (entries.length > 0 && entries.every(c => c.sync && !c.location && !(c.forcePath ?? ''))) {
       localStorage.removeItem(ALBUM_CONFIG_KEY);
       return {};
     }
