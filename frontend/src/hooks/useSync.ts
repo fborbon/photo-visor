@@ -459,9 +459,8 @@ export function useSync(
             const fullPath = album.identifier.replace(/\/$/, '') + '/' + f.name;
             if (seenPaths.has(fullPath)) continue;
             seenPaths.add(fullPath);
-            // For force-path albums: skip cursor filter so photos added with old
-            // mtime (moved from another album) are still picked up.
-            if (!hasForce && cursor && f.mtime) {
+            // Camera/ path albums bypass cursor so missing index entries are always reconciled.
+            if (!isSystemPath && cursor && f.mtime) {
               if (new Date(f.mtime) <= cursor) continue;
             }
             allItems.push({ path: fullPath, name: f.name, shouldBePrivate, tagName, isSystemPath });
