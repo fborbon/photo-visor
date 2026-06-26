@@ -286,24 +286,52 @@ def _build_thumb_collage(thumb_keys: list[str], album_display: str) -> str | Non
     return f"{CLOUDFRONT_URL}/{key}"
 
 def _short_album_url(album_display: str, deep_link: str) -> str:
-    """Publish a tiny HTML redirect at a/SLUG so the WhatsApp caption stays clean."""
+    """Publish a tiny HTML redirect at a/SLUG so the WhatsApp caption stays clean.
+
+    Priority order on Android:
+      1. Native APK (if installed) — via intent:// URL
+      2. PWA installed in Chrome / Samsung Browser — via opening in the default browser
+      3. Web browser fallback
+    """
     slug = re.sub(r"[^a-zA-Z0-9_\-]", "_", album_display.split("/")[-1].lower())
     album_short = album_display.split("/")[-1]
     key = f"a/{slug}.html"
+
+    from urllib.parse import quote as _q
+    # intent:// URL: try native APK first; if not installed, fall back to web
+    intent_url = (
+        f"intent://{deep_link.replace('https://', '')}"
+        f"#Intent;scheme=https;package=com.photovisor.family;"
+        f"S.browser_fallback_url={_q(deep_link, safe='')};end"
+    )
+
     html = (
         '<!DOCTYPE html><html><head>'
-        f'<meta http-equiv="refresh" content="1;url={deep_link}"/>'
+        '<meta charset="utf-8"/>'
+        '<meta name="viewport" content="width=device-width,initial-scale=1"/>'
+        # Fallback meta-refresh after 3 s in case JS is disabled
+        f'<meta http-equiv="refresh" content="3;url={deep_link}"/>'
         '<style>'
-        'body{margin:0;height:100vh;display:flex;flex-direction:column;'
+        'body{margin:0;min-height:100vh;display:flex;flex-direction:column;'
         'align-items:center;justify-content:center;background:#1a1a2e;'
-        'font-family:system-ui,sans-serif;color:#e0e0e0}'
-        '.emoji{font-size:80px;animation:spin 2s linear infinite}'
+        'font-family:system-ui,sans-serif;color:#e0e0e0;padding:24px;box-sizing:border-box}'
+        '.emoji{font-size:72px;animation:spin 2s linear infinite}'
         '@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}'
-        'p{font-size:18px;margin-top:20px;opacity:.7}'
+        'p{font-size:17px;margin:16px 0 4px;opacity:.75;text-align:center}'
+        'a.btn{display:inline-block;margin-top:20px;padding:12px 28px;'
+        'background:#4a9eff;color:#fff;border-radius:24px;text-decoration:none;'
+        'font-size:15px;font-weight:600}'
         '</style>'
         '</head><body>'
-        f'<div class="emoji">&#9203;</div>'
-        f'<p>Opening *{album_short}*...</p>'
+        f'<div class="emoji">&#128247;</div>'
+        f'<p>Opening <strong>{album_short}</strong>…</p>'
+        f'<a class="btn" href="{deep_link}">Open in browser</a>'
+        '<script>'
+        # Try native APK via intent://, then fall through to meta-refresh web URL
+        f'try{{window.location="{intent_url}"}}catch(e){{}}'
+        # After 1 s, redirect in browser (covers PWA interception in Chrome)
+        f'setTimeout(function(){{window.location.replace("{deep_link}")}},1000);'
+        '</script>'
         '</body></html>'
     )
     s3.put_object(Bucket=BUCKET, Key=key, Body=html.encode(),
