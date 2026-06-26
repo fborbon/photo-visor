@@ -58,7 +58,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
-          NODE_OPTIONS=--experimental-global-webcrypto npm run build
+          BASE_URL=/app/ NODE_OPTIONS=--experimental-global-webcrypto npm run build
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -85,6 +85,14 @@ jobs:
             --distribution-id ${{ env.CLOUDFRONT_ID }} \
             --paths "/app/*"
           echo "✓ Frontend deployed at $(date -u)"
+
+      - name: Verify no white page (asset paths)
+        run: |
+          sleep 10
+          URL="https://fotos.forwardforecasting.eu/app/index.html"
+          aws s3 cp s3://${{ env.S3_BUCKET }}/app/index.html - | grep -q 'src="/app/' \
+            || (echo "❌ Wrong asset paths in index.html — white page risk!" && exit 1)
+          echo "✅ Asset paths verified"
 
   # ── Demo: build → rsync to VPS nginx ──────────────────────────────────────
   demo:
