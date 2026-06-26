@@ -3,8 +3,8 @@
 
 Reads PLAY_KEY_FILE env var (path to service account JSON).
 """
+import json
 import os
-import sys
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -17,6 +17,9 @@ AAB = os.environ.get(
 PKG = "com.photovisor.family"
 SCOPES = ["https://www.googleapis.com/auth/androidpublisher"]
 
+pkg_json = os.path.join(os.path.dirname(__file__), "../frontend/package.json")
+version_name = json.load(open(pkg_json))["version"]
+
 creds = service_account.Credentials.from_service_account_file(KEY_FILE, scopes=SCOPES)
 service = build("androidpublisher", "v3", credentials=creds)
 
@@ -26,12 +29,16 @@ eid = edit["id"]
 media = MediaFileUpload(AAB, mimetype="application/octet-stream")
 bundle = service.edits().bundles().upload(packageName=PKG, editId=eid, media_body=media).execute()
 vc = bundle["versionCode"]
-print(f"Uploaded versionCode={vc}")
+print(f"Uploaded versionCode={vc}, versionName={version_name}")
 
 service.edits().tracks().update(
     packageName=PKG, editId=eid, track="production",
-    body={"releases": [{"versionCodes": [vc], "status": "completed"}]},
+    body={"releases": [{
+        "versionCodes": [vc],
+        "status": "completed",
+        "releaseNotes": [{"language": "en-US", "text": f"Version {version_name}"}],
+    }]},
 ).execute()
 
 service.edits().commit(packageName=PKG, editId=eid).execute()
-print("Published to production track.")
+print(f"Published v{version_name} to production track.")
