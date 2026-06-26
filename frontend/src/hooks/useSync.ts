@@ -424,16 +424,16 @@ export function useSync(
 
       for (const album of albums) {
         const cfg = albumConfigs[album.identifier];
-        if (cfg && !cfg.sync) continue; // skipped by user
+        // Opt-in only: skip any album not explicitly enabled, and always skip Camera Roll
+        if (!cfg || !cfg.sync) continue;
+        if (isCameraAlbum(album.identifier, album.name)) continue;
 
         try {
           patch({ phase: 'enumerating', message: `Reading: ${album.name}…` });
           const { files } = await Filesystem.readdir({ path: album.identifier });
-          const isCamera       = isCameraAlbum(album.identifier, album.name);
           const shouldBePrivate = false;
-          void isCamera;
-          const tagName         = cfg ? deriveTagName(cfg, album.name) : album.name;
-          const hasForce        = cfg ? (cfg.forcePath ?? '').trim() : '';
+          const tagName         = deriveTagName(cfg, album.name);
+          const hasForce        = (cfg.forcePath ?? '').trim();
           const isSystemPath    = !!hasForce && tagName.startsWith('Camera/');
           const imgFiles        = files.filter(f => IMAGE_EXTS.test(f.name));
           debugLines.push(`✓ ${album.name}: ${imgFiles.length} photos`);
