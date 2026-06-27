@@ -1076,7 +1076,6 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 }
 .tags-selected-name { font-size: 1.1rem; font-weight: 600; }
 .tags-photo-count { font-size: .82rem; font-weight: 400; color: #94a3b8; }
-.tags-main-resize-handle-mobile { display: none; }
 .path-copy-btn {
   background: none;
   border: 1px solid #334155;
@@ -1732,7 +1731,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   .year-btn       { font-size: .78rem; padding: .45rem .2rem; }
 
   /* Tags: stacked layout on mobile — rail on top (capped height), main below */
-  .tags-layout    { flex-direction: column; height: auto; min-height: 100%; overflow-x: hidden; }
+  .tags-layout    { flex-direction: column; height: 100%; }
   .tags-rail {
     width:          100%;
     height:         40vh;
@@ -1748,39 +1747,22 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   }
   .tags-resize-handle { display: none; }
   .tags-resize-handle-mobile {
-    width: 100%; height: 16px;
+    width: 100%; height: 22px;
     display: flex; align-items: center; justify-content: center;
     cursor: ns-resize; touch-action: none; user-select: none;
-    flex-shrink: 0; background: #111;
+    flex-shrink: 0; background: #111; gap: .4rem;
   }
   .tags-resize-handle-mobile::before {
-    content: ''; width: 40px; height: 4px;
-    background: #555; border-radius: 2px;
+    content: '↕';
+    font-size: .85rem;
+    color: #888;
+    background: #1e1e1e;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: .05rem .55rem;
+    line-height: 1.5;
   }
-  .tags-main { overflow-y: auto; }
-  .tags-main-resize-handle-mobile {
-    display: flex;
-    position: sticky;
-    bottom: 0;
-    width: 100%;
-    height: 20px;
-    align-items: center;
-    justify-content: center;
-    cursor: ns-resize;
-    touch-action: none;
-    user-select: none;
-    flex-shrink: 0;
-    background: #111;
-    border-top: 1px solid #222;
-    z-index: 5;
-  }
-  .tags-main-resize-handle-mobile::before {
-    content: '';
-    width: 40px;
-    height: 4px;
-    background: #555;
-    border-radius: 2px;
-  }
+  .tags-main { flex: 1; min-height: 0; overflow-y: auto; }
 
   /* Timeline main */
   .timeline-main  { padding: .7rem; }

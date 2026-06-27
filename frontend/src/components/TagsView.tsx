@@ -273,9 +273,7 @@ export default function TagsView() {
   // Resizable panel
   const [railWidth, setRailWidth] = useState(DEFAULT_RAIL);
   const [railVh, setRailVh]       = useState(40);
-  const [mainVh, setMainVh]       = useState(60);
   const railDragRef = useRef<{ startY: number; startVh: number } | null>(null);
-  const mainDragRef = useRef<{ startY: number; startVh: number } | null>(null);
   const mainRef       = useRef<HTMLDivElement>(null);
   const dragRef       = useRef(false);
   const startXRef     = useRef(0);
@@ -589,7 +587,7 @@ export default function TagsView() {
       )}
 
       {/* ── Tag content ──────────────────────────────────── */}
-      <div className="tags-main" ref={mainRef} style={isMobile ? { height: mainVh + 'vh' } : undefined}>
+      <div className="tags-main" ref={mainRef}>
         {!sel && <div className="timeline-hint">{tr.noTags}</div>}
 
         {/* Personal / Shared tag content */}
@@ -724,25 +722,7 @@ export default function TagsView() {
           </>
         )}
 
-        {/* Bottom resize handle for tags-main on mobile */}
-        {isMobile && (
-          <div
-            className="tags-main-resize-handle-mobile"
-            onPointerDown={e => {
-              mainDragRef.current = { startY: e.clientY, startVh: mainVh };
-              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-              e.preventDefault();
-            }}
-            onPointerMove={e => {
-              if (!mainDragRef.current) return;
-              const dy = e.clientY - mainDragRef.current.startY;
-              const dvh = (dy / window.innerHeight) * 100;
-              setMainVh(Math.max(25, Math.min(90, mainDragRef.current.startVh + dvh)));
-            }}
-            onPointerUp={() => { mainDragRef.current = null; }}
-            onPointerCancel={() => { mainDragRef.current = null; }}
-          />
-        )}
+
       </div>
 
       {/* Tag delete confirmation */}
