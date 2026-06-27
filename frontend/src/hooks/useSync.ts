@@ -192,7 +192,7 @@ async function updatePathTagsAndGeneralIndex(
 
   // Update general index file for each Camera/ folder
   for (const [folderKey, photos] of Object.entries(generalUpdates)) {
-    let existing: { hash: string }[] = [];
+    let existing: { hash: string; dt?: string | null }[] = [];
     try {
       const r = await fetch(config.cloudFrontUrl + '/index/general/' + folderKey + '.json?nc=' + Date.now());
       if (r.ok) existing = await r.json();

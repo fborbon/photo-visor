@@ -386,11 +386,24 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   transition: opacity .15s;
 }
 .thumb-cell:hover .thumb-nav-icons { opacity: 1; pointer-events: auto; }
-/* 2s long-press on mobile reveals nav icons for the tapped photo */
+/* 1s long-press on mobile reveals nav icons for the tapped photo */
 .thumb-nav-icons.mobile-visible { opacity: 1; pointer-events: auto; }
 .thumb-nav-icons.mobile-visible .thumb-nav-btn { width: 32px; height: 32px; font-size: 1rem; }
 /* Always show nav icons inside slot reels (no hover on mobile) */
 .slot-reel .thumb-nav-icons { opacity: 1; pointer-events: auto; }
+
+/* Top-left menu icon — mobile only, 1s long-press overlay */
+.thumb-menu-icon {
+  position: absolute;
+  top: 4px; left: 4px;
+  display: flex; gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 20;
+  transition: opacity .15s;
+}
+.thumb-menu-icon.mobile-visible { opacity: 1; pointer-events: auto; }
+.thumb-menu-icon.mobile-visible .thumb-nav-btn { width: 32px; height: 32px; font-size: 1rem; }
 .thumb-nav-btn {
   font-size: .75rem;
   width: 22px; height: 22px;
@@ -498,9 +511,13 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 /* Public = green, Private = red */
 .thumb-privacy-btn           { background: #14532dcc; }
 .thumb-privacy-btn.is-private{ opacity: 1; background: #7f1d1dcc; }
-/* On touch screens there is no hover — always show the lock */
+/* On touch: show lock/clipboard only during the 1s long-press overlay */
 @media (hover: none) {
-  .thumb-privacy-btn { opacity: 0.9; }
+  .thumb-privacy-btn { opacity: 0; pointer-events: none; }
+  .thumb-privacy-btn.is-private { opacity: 1; pointer-events: auto; }
+  .thumb-overlay-active .thumb-privacy-btn { opacity: 0.9; pointer-events: auto; }
+  .thumb-debug-btn { opacity: 0; pointer-events: none; }
+  .thumb-overlay-active .thumb-debug-btn { opacity: 0.9; pointer-events: auto; }
 }
 
 /* ── Album privacy toggle in panel header ────────────────────────── */
@@ -1046,11 +1063,20 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 
 .tags-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
+  gap: .5rem;
   margin-bottom: 1rem;
 }
+.tags-header-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.1rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
 .tags-selected-name { font-size: 1.1rem; font-weight: 600; }
+.tags-photo-count { font-size: .82rem; font-weight: 400; color: #94a3b8; }
+.tags-main-resize-handle-mobile { display: none; }
 .path-copy-btn {
   background: none;
   border: 1px solid #334155;
@@ -1706,7 +1732,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   .year-btn       { font-size: .78rem; padding: .45rem .2rem; }
 
   /* Tags: stacked layout on mobile — rail on top (capped height), main below */
-  .tags-layout    { flex-direction: column; height: 100%; }
+  .tags-layout    { flex-direction: column; height: auto; min-height: 100%; overflow-x: hidden; }
   .tags-rail {
     width:          100%;
     height:         40vh;
@@ -1731,7 +1757,30 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
     content: ''; width: 40px; height: 4px;
     background: #555; border-radius: 2px;
   }
-  .tags-main { flex: 1; min-height: 0; overflow-y: auto; }
+  .tags-main { overflow-y: auto; }
+  .tags-main-resize-handle-mobile {
+    display: flex;
+    position: sticky;
+    bottom: 0;
+    width: 100%;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
+    cursor: ns-resize;
+    touch-action: none;
+    user-select: none;
+    flex-shrink: 0;
+    background: #111;
+    border-top: 1px solid #222;
+    z-index: 5;
+  }
+  .tags-main-resize-handle-mobile::before {
+    content: '';
+    width: 40px;
+    height: 4px;
+    background: #555;
+    border-radius: 2px;
+  }
 
   /* Timeline main */
   .timeline-main  { padding: .7rem; }

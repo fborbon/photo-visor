@@ -112,7 +112,6 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   const [commentPhoto, setCommentPhoto] = useState<PhotoEntry | null>(null);
   const [sortOrder,    setSortOrder]    = useState<SortOrder>(defaultSort);
   const [mobileNavIdx, setMobileNavIdx] = useState<number | null>(null);
-  const longPressTimer2 = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { navigate } = useNav();
   const { isOwner, dateCutoff, isTagAllowed, isPhotoPrivate, isAlbumPrivate, togglePhoto } = usePrivacy();
@@ -209,12 +208,19 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
     }
   };
 
-  // ── Long-press (mobile): 2–4s → nav icons, >4s → context menu ───
-  // Hold 2s: nav icons appear and persist after lifting finger.
-  // Hold 4s: nav icons hide, context menu appears.
+  // ── Long-press (mobile): >1s → overlay with all icons ───────────
+  // Hold 1s: nav icons (top-right), menu icon (top-left), and owner
+  // controls (bottom-right) all appear. Tap the 💬 icon to open the
+  // context menu; tap a nav icon to switch tabs; release to dismiss.
   const clearTimers = () => {
     if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
-    if (longPressTimer2.current) { clearTimeout(longPressTimer2.current); longPressTimer2.current = null; }
+  };
+
+  const openMenuForPhoto = (idx: number, el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    const forSelection = hasSelection && selection.has(idx);
+    setMenu({ x: rect.right + 4, y: rect.bottom + 4, forSelection, singlePhoto: forSelection ? null : visible[idx] });
+    if (!forSelection) { setSelection(new Set()); lastClickedRef.current = idx; }
   };
 
   const handleTouchStart = (idx: number) => (e: React.TouchEvent) => {
@@ -229,21 +235,11 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
       if (!longPressPos.current) return;
       longPressDidFire.current = true;
       setMobileNavIdx(idx);
-    }, 2000);
-    longPressTimer2.current = setTimeout(() => {
-      longPressTimer2.current = null;
-      if (!longPressPos.current) return;
-      longPressDidFire.current = true;
-      setMobileNavIdx(null);
-      const { x, y } = longPressPos.current;
-      const forSelection = hasSelection && selection.has(idx);
-      setMenu({ x, y, forSelection, singlePhoto: forSelection ? null : visible[idx] });
-      if (!forSelection) { setSelection(new Set()); lastClickedRef.current = idx; }
-    }, 4000);
+    }, 1000);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if ((!longPressTimer.current && !longPressTimer2.current) || !longPressPos.current) return;
+    if (!longPressTimer.current || !longPressPos.current) return;
     const t = e.touches[0];
     const dx = t.clientX - longPressPos.current.x;
     const dy = t.clientY - longPressPos.current.y;
@@ -409,7 +405,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
             <div
               key={p.hash}
               data-photo-hash={p.hash}
-              className={'thumb-cell' + (isSelected ? ' selected' : '')}
+              className={'thumb-cell' + (isSelected ? ' selected' : '') + (mobileNavIdx === i ? ' thumb-overlay-active' : '')}
               onContextMenu={e => handleContextMenu(e, i)}
               onTouchStart={handleTouchStart(i)}
               onTouchMove={handleTouchMove}
@@ -449,7 +445,27 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
                 {locked && <div className="thumb-lock-overlay">🔒</div>}
               </button>
 
-              {/* Cross-tab navigation icons — hover on desktop, 2s long-press on mobile */}
+              {/* Top-left menu icon — mobile only, tap to open tags/comments menu */}
+              {isTouchDevice && (
+                <div
+                  className={'thumb-menu-icon' + (mobileNavIdx === i ? ' mobile-visible' : '')}
+                  onClick={e => e.stopPropagation()}
+                  onTouchStart={e => e.stopPropagation()}
+                >
+                  <button
+                    className="thumb-nav-btn"
+                    title="Tags & Comments"
+                    onTouchEnd={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setMobileNavIdx(null);
+                      openMenuForPhoto(i, e.currentTarget);
+                    }}
+                  >💬</button>
+                </div>
+              )}
+
+              {/* Cross-tab navigation icons — hover on desktop, 1s long-press on mobile */}
               {navMode && (goTimeline || goMap || goPath) && (
                 <div
                   className={'thumb-nav-icons' + (mobileNavIdx === i ? ' mobile-visible' : '')}

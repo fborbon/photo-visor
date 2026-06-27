@@ -212,10 +212,12 @@ export default function MapView({ displayName }: { displayName?: string }) {
     return () => { cancelled = true; };
   }, [panel]);
 
-  // Reset scroll only when the album selection or panel changes (not on secVisible updates).
+  // Reset scroll on panel/album change — but skip when a hash nav is in flight
+  // (scrollToHash will position the panel; resetting here would clobber it).
   useEffect(() => {
+    if (pendingNav?.hash) return;
     panelBodyRef.current?.scrollTo({ top: 0, behavior: 'instant' });
-  }, [panelSections, selectedAlbumIdx]);
+  }, [panelSections, selectedAlbumIdx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lazy-load more photos for the active section as the user scrolls.
   useEffect(() => {
