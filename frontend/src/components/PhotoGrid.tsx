@@ -112,6 +112,19 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   const [commentPhoto, setCommentPhoto] = useState<PhotoEntry | null>(null);
   const [sortOrder,    setSortOrder]    = useState<SortOrder>(defaultSort);
   const [mobileNavIdx, setMobileNavIdx] = useState<number | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const scrollParent = (): HTMLElement | null => {
+    let el: HTMLElement | null = wrapRef.current?.parentElement ?? null;
+    while (el) {
+      const ov = window.getComputedStyle(el).overflowY;
+      if (ov === 'auto' || ov === 'scroll') return el;
+      el = el.parentElement;
+    }
+    return null;
+  };
+  const goTop    = () => scrollParent()?.scrollTo({ top: 0, behavior: 'smooth' });
+  const goBottom = () => { const sp = scrollParent(); if (sp) sp.scrollTo({ top: sp.scrollHeight, behavior: 'smooth' }); };
 
   const { navigate } = useNav();
   const { isOwner, dateCutoff, isTagAllowed, isPhotoPrivate, isAlbumPrivate, togglePhoto } = usePrivacy();
@@ -295,7 +308,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   };
 
   return (
-    <div className="photo-grid-wrap">
+    <div className="photo-grid-wrap" ref={wrapRef}>
       {!hideHeader && <div className="grid-header">
         {title && <h3 className="grid-title">{title} <span className="grid-count">· {photos.length}</span></h3>}
         <div className="grid-sort-btns">
@@ -307,6 +320,9 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
             className={'grid-sort-btn' + (sortOrder === 'newest' ? ' active' : '')}
             onClick={() => setSortOrder(s => s === 'newest' ? 'default' : 'newest')}
           >⬇ Newest</button>
+          <span className="grid-btn-sep" />
+          <button className="grid-sort-btn" onClick={goTop}>⤒ Top</button>
+          <button className="grid-sort-btn" onClick={goBottom}>⤓ Bot</button>
         </div>
       </div>}
 

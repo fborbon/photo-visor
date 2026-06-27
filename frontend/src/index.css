@@ -338,13 +338,19 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: .5rem;
   flex-wrap: wrap;
   gap: .4rem;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #181818;
+  padding: .4rem 0 .45rem;
+  border-bottom: 1px solid #fff2;
 }
 .grid-title { font-size: .9rem; color: #888; font-weight: 500; }
 .grid-count { font-size: .82rem; color: #666; font-weight: 400; }
-.grid-sort-btns { display: flex; gap: .35rem; }
+.grid-sort-btns { display: flex; gap: .35rem; align-items: center; }
+.grid-btn-sep { width: 1px; height: 14px; background: #333; flex-shrink: 0; }
 .grid-sort-btn {
   font-size: .75rem;
   color: #666;
