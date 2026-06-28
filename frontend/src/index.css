@@ -414,6 +414,8 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   line-height: 1;
 }
 .thumb-nav-btn:hover { background: #FF7A00; }
+.thumb-wa-btn { color: #25D366; }
+.thumb-wa-btn:hover { background: #25D366; color: #fff; }
 
 /* Blink highlight when a photo is navigated to from another tab (5 s total) */
 @keyframes photo-nav-flash {
