@@ -479,6 +479,7 @@ export default function MapView({ displayName }: { displayName?: string }) {
                     navMode="map"
                     navTagName={sec.tagName}
                     defaultSort="newest"
+                    onGoToBottom={handleGoToEnd}
                   />
                   {hasMore && <div style={{ height: 1 }} data-sec-sentinel={selectedAlbumIdx} />}
                 </div>

@@ -27,6 +27,7 @@ interface Props {
   defaultSort?:   SortOrder;  // initial sort order (default: 'oldest')
   hideHeader?:    boolean;    // hide title + sort buttons
   headerAbove?:   React.ReactNode; // extra content frozen above sort buttons inside sticky header
+  onGoToBottom?:  () => void; // override ⤓ Bot: caller loads all photos then scrolls
 }
 
 interface MenuState { x: number; y: number; forSelection: boolean; singlePhoto: PhotoEntry | null; }
@@ -101,7 +102,7 @@ function shortModel(model: string): string {
 
 type SortOrder = 'default' | 'oldest' | 'newest';
 
-export default function PhotoGrid({ photos, albumKey, title, placeFallback = '', navMode, navTagName, defaultSort = 'oldest', hideHeader, headerAbove }: Props) {
+export default function PhotoGrid({ photos, albumKey, title, placeFallback = '', navMode, navTagName, defaultSort = 'oldest', hideHeader, headerAbove, onGoToBottom }: Props) {
   const [modalIdx,     setModalIdx]     = useState<number | null>(null);
   const [selection,    setSelection]    = useState<Set<number>>(new Set());
   const lastClickedRef                  = useRef<number | null>(null);
@@ -125,7 +126,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
     return null;
   };
   const goTop    = () => scrollParent()?.scrollTo({ top: 0, behavior: 'smooth' });
-  const goBottom = () => { const sp = scrollParent(); if (sp) sp.scrollTo({ top: sp.scrollHeight, behavior: 'smooth' }); };
+  const goBottom = onGoToBottom ?? (() => { const sp = scrollParent(); if (sp) sp.scrollTo({ top: sp.scrollHeight, behavior: 'smooth' }); });
 
   const { navigate } = useNav();
   const { isOwner, dateCutoff, isTagAllowed, isPhotoPrivate, isAlbumPrivate, togglePhoto } = usePrivacy();
