@@ -3,6 +3,7 @@ const IS_DEMO = (import.meta.env.VITE_DEMO as string | undefined) === 'true';
 const config = IS_DEMO ? {
   cloudFrontUrl:            'https://picsum.photos',
   indexBase:                '/photo-visor',
+  webAppUrl:                '/photo-visor',
   bucketName:               'demo',
   cloudFrontDistributionId: '',
   region:                   'eu-west-1',
@@ -13,6 +14,7 @@ const config = IS_DEMO ? {
 } : {
   cloudFrontUrl:            'https://fotos.forwardforecasting.eu',
   indexBase:                'https://fotos.forwardforecasting.eu',
+  webAppUrl:                'https://fotos.forwardforecasting.eu/app',
   bucketName:               'photo-visor-295936871972',
   cloudFrontDistributionId: 'E2JW5PYKNPPYOB',
   region:                   'eu-west-1',

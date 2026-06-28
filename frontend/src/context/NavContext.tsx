@@ -87,20 +87,32 @@ export function NavProvider({
   );
 }
 
-/** Reads `?folder=<Path Tags display path>` from the URL on mount (e.g. from a
- * WhatsApp album-notification link) and navigates straight to that folder. */
+/** Reads deep-link params from the URL on mount and navigates accordingly.
+ *  Supported params:
+ *   ?folder=<Path Tags display path>   → open folder in Tags tab
+ *   ?photo=<hash>[&year=<YYYY>]        → open photo in Timeline tab
+ */
 export function DeepLinkHandler() {
   const { navigate } = useNav();
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const folder = params.get('folder');
-    if (!folder) return;
+    const photo  = params.get('photo');
+    const year   = params.get('year');
 
-    navigate('tags', { hash: '', folderPath: folder });
+    if (folder) {
+      navigate('tags', { hash: '', folderPath: folder });
+    } else if (photo) {
+      navigate('timeline', { hash: photo, year: year ? Number(year) : undefined });
+    } else {
+      return;
+    }
 
     const url = new URL(window.location.href);
     url.searchParams.delete('folder');
+    url.searchParams.delete('photo');
+    url.searchParams.delete('year');
     window.history.replaceState({}, '', url.toString());
     // Run once on mount only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
