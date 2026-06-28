@@ -460,19 +460,6 @@ export default function MapView({ displayName }: { displayName?: string }) {
               const hasMore = sec.photos.length > shown;
               return (
                 <div className="album-section">
-                  {panelSections.length === 1 && (
-                    <div className="album-section-hdr">
-                      <span className="album-section-title">{sec.label} <span className="album-section-count">· {sec.photos.length}</span></span>
-                      <span
-                        className={'fav-star' + (isFavorite(sec.tagName) ? ' fav-star--on' : '')}
-                        role="button"
-                        tabIndex={0}
-                        title={isFavorite(sec.tagName) ? 'Remove from favorites' : 'Add to favorites'}
-                        onClick={() => toggleFavorite(sec.tagName)}
-                        onKeyDown={e => { if (e.key === 'Enter') toggleFavorite(sec.tagName); }}
-                      >★</span>
-                    </div>
-                  )}
                   <PhotoGrid
                     photos={sec.photos.slice(0, shown)}
                     placeFallback={panel.fallback}
@@ -480,6 +467,19 @@ export default function MapView({ displayName }: { displayName?: string }) {
                     navTagName={sec.tagName}
                     defaultSort="newest"
                     onGoToBottom={handleGoToEnd}
+                    headerAbove={panelSections.length === 1 ? (
+                      <div className="album-section-hdr">
+                        <span className="album-section-title">{sec.label} <span className="album-section-count">· {sec.photos.length}</span></span>
+                        <span
+                          className={'fav-star' + (isFavorite(sec.tagName) ? ' fav-star--on' : '')}
+                          role="button"
+                          tabIndex={0}
+                          title={isFavorite(sec.tagName) ? 'Remove from favorites' : 'Add to favorites'}
+                          onClick={() => toggleFavorite(sec.tagName)}
+                          onKeyDown={e => { if (e.key === 'Enter') toggleFavorite(sec.tagName); }}
+                        >★</span>
+                      </div>
+                    ) : undefined}
                   />
                   {hasMore && <div style={{ height: 1 }} data-sec-sentinel={selectedAlbumIdx} />}
                 </div>

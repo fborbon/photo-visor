@@ -329,6 +329,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .grid-header-above { width: 100%; }
 .grid-header-above .tags-header { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
 .grid-header-above .month-strip { margin-bottom: 0; }
+.grid-header-above .album-section-hdr { padding-left: 0; padding-right: 0; }
 .grid-header-controls {
   display: flex;
   align-items: center;
