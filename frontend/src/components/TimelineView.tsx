@@ -132,8 +132,8 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
           <>
             {loading && <p className="panel-loading">{tr.loading}</p>}
 
-            {/* Month selector strip */}
-            {!loading && monthGroups.length > 0 && (
+            {/* Month selector strip — shown standalone when no month selected yet */}
+            {!loading && monthGroups.length > 0 && !activeGroup && (
               <div className="month-strip">
                 {monthGroups.map(g => (
                   <button
@@ -148,15 +148,27 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
               </div>
             )}
 
-            {/* Photo grid for selected month — sort handled by PhotoGrid */}
+            {/* Photo grid — month strip moves inside sticky header when a month is selected */}
             {activeGroup && (
-              <>
-                <div className="month-section">
-                  <PhotoGrid
-                    photos={activeGroup.photos}
-                    navMode="timeline"
-                    defaultSort="newest"
-                    headerAbove={
+              <div className="month-section">
+                <PhotoGrid
+                  photos={activeGroup.photos}
+                  navMode="timeline"
+                  defaultSort="newest"
+                  headerAbove={
+                    <>
+                      <div className="month-strip">
+                        {monthGroups.map(g => (
+                          <button
+                            key={g.month}
+                            className={'month-btn' + (selectedMonth === g.month ? ' active' : '')}
+                            onClick={() => setSelectedMonth(g.month)}
+                          >
+                            {g.month ? tr.monthsShort[g.month] : '?'}
+                            <span className="month-count">{g.photos.length}</span>
+                          </button>
+                        ))}
+                      </div>
                       <div className="month-section-header">
                         <span className="month-section-name">
                           {activeGroup.month ? tr.months[activeGroup.month] : '?'}
@@ -165,10 +177,10 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
                           {activeGroup.photos.length} {tr.photos}
                         </span>
                       </div>
-                    }
-                  />
-                </div>
-              </>
+                    </>
+                  }
+                />
+              </div>
             )}
 
             {!loading && !selectedMonth && monthGroups.length > 0 && (
