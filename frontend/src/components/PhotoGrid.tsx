@@ -26,6 +26,7 @@ interface Props {
   navTagName?:    string;     // Map: full sysTag name (e.g. "España/Pamplona/Concierto Malu")
   defaultSort?:   SortOrder;  // initial sort order (default: 'oldest')
   hideHeader?:    boolean;    // hide title + sort buttons
+  headerAbove?:   React.ReactNode; // extra content frozen above sort buttons inside sticky header
 }
 
 interface MenuState { x: number; y: number; forSelection: boolean; singlePhoto: PhotoEntry | null; }
@@ -100,7 +101,7 @@ function shortModel(model: string): string {
 
 type SortOrder = 'default' | 'oldest' | 'newest';
 
-export default function PhotoGrid({ photos, albumKey, title, placeFallback = '', navMode, navTagName, defaultSort = 'oldest', hideHeader }: Props) {
+export default function PhotoGrid({ photos, albumKey, title, placeFallback = '', navMode, navTagName, defaultSort = 'oldest', hideHeader, headerAbove }: Props) {
   const [modalIdx,     setModalIdx]     = useState<number | null>(null);
   const [selection,    setSelection]    = useState<Set<number>>(new Set());
   const lastClickedRef                  = useRef<number | null>(null);
@@ -310,19 +311,22 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   return (
     <div className="photo-grid-wrap" ref={wrapRef}>
       {!hideHeader && <div className="grid-header">
-        {title && <h3 className="grid-title">{title} <span className="grid-count">· {photos.length}</span></h3>}
-        <div className="grid-sort-btns">
-          <button
-            className={'grid-sort-btn' + (sortOrder === 'oldest' ? ' active' : '')}
-            onClick={() => setSortOrder(s => s === 'oldest' ? 'default' : 'oldest')}
-          >⬆ Oldest</button>
-          <button
-            className={'grid-sort-btn' + (sortOrder === 'newest' ? ' active' : '')}
-            onClick={() => setSortOrder(s => s === 'newest' ? 'default' : 'newest')}
-          >⬇ Newest</button>
-          <span className="grid-btn-sep" />
-          <button className="grid-sort-btn" onClick={goTop}>⤒ Top</button>
-          <button className="grid-sort-btn" onClick={goBottom}>⤓ Bot</button>
+        {headerAbove && <div className="grid-header-above">{headerAbove}</div>}
+        <div className="grid-header-controls">
+          {title && <h3 className="grid-title">{title} <span className="grid-count">· {photos.length}</span></h3>}
+          <div className="grid-sort-btns">
+            <button
+              className={'grid-sort-btn' + (sortOrder === 'oldest' ? ' active' : '')}
+              onClick={() => setSortOrder(s => s === 'oldest' ? 'default' : 'oldest')}
+            >⬆ Oldest</button>
+            <button
+              className={'grid-sort-btn' + (sortOrder === 'newest' ? ' active' : '')}
+              onClick={() => setSortOrder(s => s === 'newest' ? 'default' : 'newest')}
+            >⬇ Newest</button>
+            <span className="grid-btn-sep" />
+            <button className="grid-sort-btn" onClick={goTop}>⤒ Top</button>
+            <button className="grid-sort-btn" onClick={goBottom}>⤓ Bot</button>
+          </div>
         </div>
       </div>}
 

@@ -152,21 +152,21 @@ export default function TimelineView({ initialYear, initialMonth }: Props) {
             {activeGroup && (
               <>
                 <div className="month-section">
-                  <div className="month-section-header">
-                    <span className="month-section-name">
-                      {activeGroup.month ? tr.months[activeGroup.month] : '?'}
-                    </span>
-                    <span className="month-section-count">
-                      {activeGroup.photos.length} {tr.photos}
-                    </span>
-                  </div>
-                  <PhotoGrid photos={activeGroup.photos} navMode="timeline" defaultSort="newest" />
-                  <div className="back-to-top-wrap">
-                    <button
-                      className="back-to-top-btn"
-                      onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
-                    >↑ {tr.backToTop ?? 'Back to top'}</button>
-                  </div>
+                  <PhotoGrid
+                    photos={activeGroup.photos}
+                    navMode="timeline"
+                    defaultSort="newest"
+                    headerAbove={
+                      <div className="month-section-header">
+                        <span className="month-section-name">
+                          {activeGroup.month ? tr.months[activeGroup.month] : '?'}
+                        </span>
+                        <span className="month-section-count">
+                          {activeGroup.photos.length} {tr.photos}
+                        </span>
+                      </div>
+                    }
+                  />
                 </div>
               </>
             )}

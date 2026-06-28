@@ -451,13 +451,6 @@ export default function MapView({ displayName }: { displayName?: string }) {
             </>
           )}
 
-          {panelSections && panelSections.length > 0 && (
-            <div className="panel-nav-bar">
-              <button className="panel-nav-btn" onClick={handleGoToStart}>▲</button>
-              <button className="panel-nav-btn" onClick={handleGoToEnd}>▼</button>
-            </div>
-          )}
-
           <div className="panel-body" ref={panelBodyRef}>
             {panelLoading && <p className="panel-loading">{tr.loadingPhotos}</p>}
             {panelSections && (() => {

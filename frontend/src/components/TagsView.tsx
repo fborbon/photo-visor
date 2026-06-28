@@ -593,7 +593,7 @@ export default function TagsView() {
         {/* Personal / Shared tag content */}
         {sel && entry && (
           <>
-            <div className="tags-header">
+            <div className="tags-header tags-header--sticky">
               <h2 className="tags-selected-name">
                 {sel.scope === 'private' ? '🔒' : '👤'} {sel.name}
                 {sel.scope === 'shared' && (
@@ -629,12 +629,7 @@ export default function TagsView() {
                   <div className="album-expand">
                     {albumLoading && <p className="panel-loading">{tr.loading}</p>}
                     {albumPhotos  && (
-                      <>
-                        <PhotoGrid photos={albumPhotos} navMode="tags" />
-                        <div className="back-to-top-wrap">
-                          <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
-                        </div>
-                      </>
+                      <PhotoGrid photos={albumPhotos} navMode="tags" />
                     )}
                   </div>
                 )}
@@ -642,14 +637,7 @@ export default function TagsView() {
             )}
 
             {entry.photos.length > 0
-              ? (
-                <>
-                  <PhotoGrid photos={entry.photos} navMode="tags" defaultSort="newest" />
-                  <div className="back-to-top-wrap">
-                    <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
-                  </div>
-                </>
-              )
+              ? <PhotoGrid photos={entry.photos} navMode="tags" defaultSort="newest" />
               : !entry.albums.length ? <p className="panel-loading">{tr.noTaggedPhotos}</p> : null
             }
           </>
@@ -658,32 +646,29 @@ export default function TagsView() {
         {/* System tag content */}
         {sel?.scope === 'system' && (
           <>
-            <div className="tags-header">
-              <h2 className="tags-selected-name">
-                🗂 {[
-                  translateCity(sysTagCityKey(sel.name), lang),
-                  translateCountry(sysTagCountryKey(sel.name), lang),
-                ].filter(Boolean).join(', ') || sel.name}
-              </h2>
-              <span className="tag-owner-hint">
-                {systemTagIndex.tags[sel.name]?.count ?? 0} {tr.taggedPhotos}
-              </span>
-            </div>
             {sysLoading && <p className="panel-loading">{tr.loading}</p>}
             {sysPhotos && (
-              <>
-                <PhotoGrid
-                  photos={sysPhotos}
-                  placeFallback={[
-                    translateCity(sysTagCityKey(sel.name), lang),
-                    translateCountry(sysTagCountryKey(sel.name), lang),
-                  ].filter(Boolean).join(', ')}
-                  navMode="tags"
-                />
-                <div className="back-to-top-wrap">
-                  <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
-                </div>
-              </>
+              <PhotoGrid
+                photos={sysPhotos}
+                placeFallback={[
+                  translateCity(sysTagCityKey(sel.name), lang),
+                  translateCountry(sysTagCountryKey(sel.name), lang),
+                ].filter(Boolean).join(', ')}
+                navMode="tags"
+                headerAbove={
+                  <div className="tags-header">
+                    <h2 className="tags-selected-name">
+                      🗂 {[
+                        translateCity(sysTagCityKey(sel.name), lang),
+                        translateCountry(sysTagCountryKey(sel.name), lang),
+                      ].filter(Boolean).join(', ') || sel.name}
+                    </h2>
+                    <span className="tag-owner-hint">
+                      {systemTagIndex.tags[sel.name]?.count ?? 0} {tr.taggedPhotos}
+                    </span>
+                  </div>
+                }
+              />
             )}
           </>
         )}
@@ -691,19 +676,6 @@ export default function TagsView() {
         {/* Path tag content */}
         {sel?.scope === 'path' && (
           <>
-            <div className="tags-header">
-              <div className="tags-header-text">
-                <span className="tags-selected-name">📁 {diskPathToDisplay(sel.name)}</span>
-                {pathPhotos && <span className="tags-photo-count"> · {pathPhotos.length} {tr.taggedPhotos}</span>}
-              </div>
-              <button
-                className="path-copy-btn"
-                title="Copy path for Sync tab Force path"
-                onClick={() => navigator.clipboard.writeText(sel.name).catch(() => {})}
-              >
-                📋
-              </button>
-            </div>
             {pathLoading && <p className="panel-loading">{tr.loading}</p>}
             {!pathLoading && pathPhotos === null && (
               <p className="panel-loading" style={{ color: '#555' }}>No photos indexed for this folder.</p>
@@ -712,12 +684,27 @@ export default function TagsView() {
               <p className="panel-loading">{tr.noTaggedPhotos}</p>
             )}
             {pathPhotos && pathPhotos.length > 0 && (
-              <>
-                <PhotoGrid photos={pathPhotos} placeFallback={folderFullLabel(sel.name)} navMode="path" defaultSort="newest" />
-                <div className="back-to-top-wrap">
-                  <button className="back-to-top-btn" onClick={() => mainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>↑ {tr.backToTop ?? 'Back to top'}</button>
-                </div>
-              </>
+              <PhotoGrid
+                photos={pathPhotos}
+                placeFallback={folderFullLabel(sel.name)}
+                navMode="path"
+                defaultSort="newest"
+                headerAbove={
+                  <div className="tags-header">
+                    <div className="tags-header-text">
+                      <span className="tags-selected-name">📁 {diskPathToDisplay(sel.name)}</span>
+                      <span className="tags-photo-count"> · {pathPhotos.length} {tr.taggedPhotos}</span>
+                    </div>
+                    <button
+                      className="path-copy-btn"
+                      title="Copy path for Sync tab Force path"
+                      onClick={() => navigator.clipboard.writeText(sel.name).catch(() => {})}
+                    >
+                      📋
+                    </button>
+                  </div>
+                }
+              />
             )}
           </>
         )}
