@@ -1,10 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useTags }        from '../context/TagsContext';
 import { useLang }        from '../context/LangContext';
 import { useNav }         from '../context/NavContext';
+import { usePrivacy }     from '../context/PrivacyContext';
 import { useIndex }       from '../hooks/useIndex';
-import { RecentIndex, PhotoEntry } from '../types';
+import { RecentIndex, PhotoEntry, Summary } from '../types';
 import PhotoGrid          from './PhotoGrid';
+import PhotoModal         from './PhotoModal';
+import AddTagModal        from './AddTagModal';
+import AddCommentModal    from './AddCommentModal';
 import config             from '../config';
 
 const STRIP = 12;
@@ -27,7 +31,13 @@ export default function LatestView() {
   const { tr }  = useLang();
   const ctx     = useTags();
   const { navigate } = useNav();
+  const { isOwner } = usePrivacy();
   const [subtab, setSubtab] = useState<Subtab>('added');
+  const [stripModal,   setStripModal]   = useState<{ photos: PhotoEntry[]; idx: number } | null>(null);
+  const [addTagTarget, setAddTagTarget] = useState<PhotoEntry[] | null>(null);
+  const [commentPhoto, setCommentPhoto] = useState<PhotoEntry | null>(null);
+  // Extra photo entries fetched from time-index files for older commented photos
+  const [timePhotos,   setTimePhotos]   = useState<Record<string, PhotoEntry>>({});
 
   const [clearedAdded,    setClearedAdded]    = useState(() => loadCleared('added'));
   const [clearedTags,     setClearedTags]     = useState(() => loadCleared('tags'));
@@ -63,14 +73,47 @@ export default function LatestView() {
     return hashes;
   }, [ctx.sharedCommentTimes, ctx.commentTimes]);
 
+  // Load time-index files to find real PhotoEntry for commented photos that are
+  // not in personal tags, shared tags, or the recent index (e.g. older untagged photos).
+  useEffect(() => {
+    if (subtab !== 'comments' || commentHashes.size === 0) return;
+    let cancelled = false;
+    (async () => {
+      // Collect hashes we already have real data for
+      const known = new Set<string>();
+      for (const e of Object.values(ctx.tags))       for (const p of e.photos) known.add(p.hash);
+      for (const e of Object.values(ctx.sharedTags)) for (const p of e.photos) known.add(p.hash);
+      const missing = [...commentHashes].filter(h => !known.has(h));
+      if (missing.length === 0) return;
+      try {
+        const summary: Summary = await fetch(config.cloudFrontUrl + '/index/summary.json').then(r => r.json());
+        const years = [...summary.years].sort((a, b) => b - a);
+        const toFind = new Set(missing);
+        const found: Record<string, PhotoEntry> = {};
+        for (const year of years) {
+          if (cancelled || toFind.size === 0) break;
+          try {
+            const photos: PhotoEntry[] = await fetch(config.cloudFrontUrl + '/index/time/' + year + '.json').then(r => r.json());
+            for (const p of photos) {
+              if (toFind.has(p.hash)) { found[p.hash] = p; toFind.delete(p.hash); }
+            }
+          } catch { /* skip year if unavailable */ }
+        }
+        if (!cancelled && Object.keys(found).length > 0) setTimePhotos(found);
+      } catch { /* summary unavailable */ }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subtab, commentHashes]);
+
   const photoByHash = useMemo((): Record<string, PhotoEntry> => {
     const map: Record<string, PhotoEntry> = {};
     for (const e of Object.values(ctx.tags))       for (const p of e.photos) map[p.hash] = p;
     for (const e of Object.values(ctx.sharedTags)) for (const p of e.photos) map[p.hash] = p;
     if (recentIndex) for (const p of recentIndex.photos) map[p.hash] = p;
-    // For commented photos not found in tags/recent, construct a stub with the
-    // standard thumb path so thumbnails display in the Comments subtab.
-    // s3_key is null because we don't know the actual extension (.heic/.jpg).
+    // Use entries found from time-index loading (real thumb/dt/city data for older photos)
+    for (const [h, p] of Object.entries(timePhotos)) if (!map[h]) map[h] = p;
+    // Stub fallback for any hash still missing
     for (const h of commentHashes) {
       if (!map[h]) {
         map[h] = {
@@ -81,7 +124,7 @@ export default function LatestView() {
       }
     }
     return map;
-  }, [ctx.tags, ctx.sharedTags, recentIndex, commentHashes]);
+  }, [ctx.tags, ctx.sharedTags, recentIndex, commentHashes, timePhotos]);
 
   const clearedAddedMs = clearedAdded ? Date.parse(clearedAdded) : 0;
 
@@ -221,30 +264,40 @@ export default function LatestView() {
                   const total = t.photos.length + t.albums.length;
                   return (
                     <div key={(t.shared ? 's:' : 'p:') + t.name} className="latest-tag-card">
-                      <div className="latest-tag-header">
+                      <button
+                        className="latest-tag-header"
+                        onClick={() => navigate('tags', { hash: '', tagSelect: { name: t.name, scope: t.shared ? 'shared' : 'private' } })}
+                      >
                         <span className="latest-tag-icon">{t.shared ? '👨‍👩‍👧' : '🔒'}</span>
                         <span className="latest-tag-name">{t.name}</span>
                         <span className="latest-tag-meta">{total} {tr.taggedPhotos}</span>
                         <span className="latest-item-date">{fmt(t.createdAt, months)}</span>
-                      </div>
+                      </button>
                       {thumbPhotos.length > 0 && (
                         <div className="latest-strip">
                           {thumbPhotos.map(p => {
                             const dt = p.dt ? new Date(p.dt) : null;
                             return (
                               <div key={p.hash} className="latest-strip-cell">
-                                <img
-                                  className="latest-strip-thumb"
-                                  src={config.cloudFrontUrl + '/' + p.thumb}
-                                  alt=""
-                                />
+                                <button
+                                  className="latest-strip-thumb-btn"
+                                  onClick={() => setStripModal({ photos: t.photos, idx: t.photos.indexOf(p) })}
+                                >
+                                  <img
+                                    className="latest-strip-thumb"
+                                    src={config.cloudFrontUrl + '/' + p.thumb}
+                                    alt=""
+                                  />
+                                </button>
                                 <div className="latest-strip-nav">
                                   <button title="Timeline" onClick={() => navigate('timeline', { hash: p.hash, year: dt?.getFullYear(), month: dt ? dt.getMonth()+1 : undefined })}>📅</button>
                                   <button title="Map" onClick={() => navigate('map', { hash: p.hash, mapCountry: p.country ?? undefined, mapCity: p.city ?? undefined })}>📍</button>
                                   <button title="Folder" onClick={() => navigate('tags', { hash: p.hash, folderPath: p.path ? p.path.split('/').slice(0,-1).join('/') : undefined })}>📂</button>
                                 </div>
-                                <button className="latest-strip-clip" title="Copy path"
-                                  onClick={() => navigator.clipboard.writeText(p.path ?? p.folder ?? p.hash).catch(()=>{})}>📋</button>
+                                {isOwner && (
+                                  <button className="latest-strip-clip" title="Copy path"
+                                    onClick={() => navigator.clipboard.writeText(p.path ?? p.folder ?? p.hash).catch(()=>{})}>📋</button>
+                                )}
                               </div>
                             );
                           })}
@@ -270,17 +323,57 @@ export default function LatestView() {
             : (
               <>
                 {commentItems.map(c => (
-                  <div key={c.hash} className="latest-comment-card">
+                  <div
+                    key={c.hash}
+                    className={'latest-comment-card' + (c.photo?.thumb ? ' clickable' : '')}
+                    onClick={() => c.photo?.thumb && setStripModal({ photos: [c.photo!], idx: 0 })}
+                  >
                     <div className="latest-comment-header">
-                      <span className="latest-comment-text">💬 "{c.text}"</span>
+                      {c.photo?.thumb ? (
+                        <img
+                          className="latest-comment-thumb"
+                          src={config.cloudFrontUrl + '/' + c.photo.thumb}
+                          alt=""
+                          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : c.photo ? (
+                        <div className="latest-comment-no-thumb">🎬</div>
+                      ) : null}
+                      <div className="latest-comment-body">
+                        <span className="latest-comment-text">💬 "{c.text}"</span>
+                      </div>
                     </div>
-                    {c.photo && <PhotoGrid photos={[c.photo]} navMode="latest" hideHeader />}
                   </div>
                 ))}
               </>
             )
           }
         </div>
+      )}
+
+      {stripModal && (
+        <PhotoModal
+          photo={stripModal.photos[stripModal.idx]}
+          onClose={() => setStripModal(null)}
+          onPrev={stripModal.idx > 0 ? () => setStripModal(s => s && { ...s, idx: s.idx - 1 }) : null}
+          onNext={stripModal.idx < stripModal.photos.length - 1 ? () => setStripModal(s => s && { ...s, idx: s.idx + 1 }) : null}
+          onAddTag={p => setAddTagTarget([p])}
+          onAddComment={p => setCommentPhoto(p)}
+        />
+      )}
+      {addTagTarget && (
+        <AddTagModal
+          onAdd={(tagName, shared) => addTagTarget.forEach(p => ctx.addPhotoToTag(p, tagName, shared))}
+          onClose={() => setAddTagTarget(null)}
+        />
+      )}
+      {commentPhoto && (
+        <AddCommentModal
+          existing={ctx.getComment(commentPhoto.hash)}
+          existingShared={ctx.getCommentShared(commentPhoto.hash)}
+          onSave={(text, shared) => ctx.setComment(commentPhoto.hash, text, shared)}
+          onClose={() => setCommentPhoto(null)}
+        />
       )}
 
     </div>

@@ -163,7 +163,7 @@ function folderFullLabel(diskPath: string) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function TagsView() {
-  const { tags, tagNames, sharedTags, sharedTagNames, systemTagIndex, systemTagsLoading, deleteTag, isMySharedTag } = useTags();
+  const { tags, tagNames, sharedTags, sharedTagNames, systemTagIndex, systemTagsLoading, deleteTag, moveTag, isMySharedTag } = useTags();
   const { lang, tr } = useLang();
   const { isOwner, dateCutoff, isTagAllowed, allowedPrefixes } = usePrivacy();
   const { pendingNav, clearNav, navigate } = useNav();
@@ -400,6 +400,15 @@ export default function TagsView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingNav, tagPaths]);
 
+  // Apply incoming nav: open a personal or shared tag by name.
+  useEffect(() => {
+    if (!pendingNav?.tagSelect) return;
+    const { name, scope } = pendingNav.tagSelect;
+    setSel({ name, scope });
+    clearNav();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingNav]);
+
   // After the folder's photos load, scroll to the target hash.
   useEffect(() => {
     if (!pendingNav?.hash || !sel) return;
@@ -592,17 +601,34 @@ export default function TagsView() {
 
         {/* Personal / Shared tag content */}
         {sel && entry && (() => {
+          const canToggleScope = isOwner && (sel.scope === 'private' || isMySharedTag(sel.name));
           const tagHeader = (
             <div className="tags-header">
               <h2 className="tags-selected-name">
-                {sel.scope === 'private' ? '🔒' : '👤'} {sel.name}
-                {sel.scope === 'shared' && (
+                {sel.scope === 'private' ? '🔒' : '👨‍👩‍👧'} {sel.name}
+                {sel.scope === 'shared' && !canToggleScope && (
                   <span className="tag-owner-hint"> · {tr.sharedBy} {sharedTags[sel.name]?.ownerEmail ? displayNameForEmail(sharedTags[sel.name]!.ownerEmail!) : ''}</span>
                 )}
               </h2>
               <span className="tag-owner-hint">
                 {entry.photos.length + entry.albums.length} {tr.taggedPhotos}
               </span>
+              {canToggleScope && (
+                <label className="tag-scope-toggle" title={sel.scope === 'shared' ? 'Switch to private (family can no longer see)' : 'Share with family'}>
+                  <input
+                    type="checkbox"
+                    checked={sel.scope === 'shared'}
+                    onChange={async () => {
+                      const fromShared = sel.scope === 'shared';
+                      await moveTag(sel.name, fromShared);
+                      setSel({ name: sel.name, scope: fromShared ? 'private' : 'shared' });
+                    }}
+                  />
+                  <span className="tag-scope-label">
+                    {sel.scope === 'shared' ? '👨‍👩‍👧 Family' : '🔒 Private'}
+                  </span>
+                </label>
+              )}
               {canDelete(sel.name, sel.scope) && (
                 <button className="tag-delete-btn"
                   onClick={() => setConfirmDeleteTag({ name: sel.name, shared: sel.scope === 'shared' })}>

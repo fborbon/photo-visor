@@ -9,6 +9,7 @@ export interface PendingNav {
   tagName?:    string;      // Map: full sysTag name → identify the right pin
   mapCountry?: string;      // Map fallback: photo.country (English, e.g. "Spain")
   mapCity?:    string;      // Map fallback: photo.city   (e.g. "Pamplona")
+  tagSelect?:  { name: string; scope: 'private' | 'shared' }; // Tags: open a personal/shared tag by name
 }
 
 interface NavCtxType {

@@ -110,6 +110,8 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   const longPressTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressPos     = useRef<{ x: number; y: number } | null>(null);
   const longPressDidFire = useRef(false);
+  const touchIdxRef      = useRef<number | null>(null);
+  const touchStartTime   = useRef(0);
   const [addTagTarget, setAddTagTarget] = useState<PhotoEntry[] | null>(null);
   const [commentPhoto, setCommentPhoto] = useState<PhotoEntry | null>(null);
   const [sortOrder,    setSortOrder]    = useState<SortOrder>(defaultSort);
@@ -203,8 +205,6 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
 
   // ── Context menu ─────────────────────────────────────────────────
   const isTouchDevice = typeof window !== 'undefined' && 'ontouchstart' in window;
-  const touchIdxRef = useRef<number | null>(null);
-  const touchStartTime = useRef(0);
 
   const handleContextMenu = (e: React.MouseEvent, idx: number) => {
     e.preventDefault();

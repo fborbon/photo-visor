@@ -19,6 +19,7 @@ interface TagsCtx {
   removePhotoTag:  (hash: string,     tagName: string, shared: boolean) => Promise<void>;
   removeAlbumTag:  (albumKey: string, tagName: string, shared: boolean) => Promise<void>;
   deleteTag:       (tagName: string,  shared: boolean) => Promise<void>;
+  moveTag:         (tagName: string,  fromShared: boolean) => Promise<void>;
 
   getComment:        (hash: string) => string;
   getCommentShared:  (hash: string) => boolean;
@@ -37,7 +38,7 @@ const TagsContext = createContext<TagsCtx>({
   systemTagIndex: emptySystemIndex, systemTagsLoading: false,
   addPhotoToTag: async () => {}, addAlbumToTag:  async () => {},
   removePhotoTag: async () => {}, removeAlbumTag: async () => {},
-  deleteTag:   async () => {},
+  deleteTag:   async () => {}, moveTag: async () => {},
   getComment:  () => '', getCommentShared: () => false, setComment: async () => {},
   commentTimes: {}, sharedCommentTimes: {},
   ownerKey: '', isMySharedTag: () => false,
@@ -311,6 +312,32 @@ export function TagsProvider({ children }: { children: ReactNode }) {
     }
   }, [privateData, sharedData, persistPrivate, persistShared, myOwnerKey, myEmail]);
 
+  // ── Move tag between private ↔ shared ─────────────────────────────
+  const moveTag = useCallback(async (tagName: string, fromShared: boolean) => {
+    const now = new Date().toISOString();
+    if (fromShared) {
+      const e = sharedData.tags[tagName]; if (!e) return;
+      const { [tagName]: _rm, ...restShared } = sharedData.tags;
+      const base = privateData.tags[tagName] ?? { photos: [], albums: [], createdAt: e.createdAt ?? now };
+      const photos = [...base.photos];
+      for (const p of e.photos) { if (!photos.some(x => x.hash === p.hash)) photos.push(p); }
+      const albums = [...base.albums];
+      for (const a of e.albums) { if (!albums.some(x => x.key === a.key)) albums.push(a); }
+      await persistShared({ ...sharedData, updated: now, tags: restShared });
+      await persistPrivate({ ...privateData, updated: now, tags: { ...privateData.tags, [tagName]: { ...base, photos, albums } } });
+    } else {
+      const e = privateData.tags[tagName]; if (!e) return;
+      const { [tagName]: _rm, ...restPrivate } = privateData.tags;
+      const base = sharedData.tags[tagName] ?? { photos: [], albums: [], ownerKey: myOwnerKey, ownerEmail: myEmail, createdAt: e.createdAt ?? now };
+      const photos = [...base.photos];
+      for (const p of e.photos) { if (!photos.some(x => x.hash === p.hash)) photos.push(p); }
+      const albums = [...base.albums];
+      for (const a of e.albums) { if (!albums.some(x => x.key === a.key)) albums.push(a); }
+      await persistPrivate({ ...privateData, updated: now, tags: restPrivate });
+      await persistShared({ ...sharedData, updated: now, tags: { ...sharedData.tags, [tagName]: { ...base, photos, albums } } });
+    }
+  }, [privateData, sharedData, persistPrivate, persistShared, myOwnerKey, myEmail]);
+
   const isMySharedTag = useCallback((tagName: string) => {
     const e = sharedData.tags[tagName];
     return !!e && e.ownerKey === myOwnerKey;
@@ -323,7 +350,7 @@ export function TagsProvider({ children }: { children: ReactNode }) {
       sharedTags:     sharedData.tags,
       sharedTagNames: Object.keys(sharedData.tags).sort(),
       addPhotoToTag, addAlbumToTag,
-      removePhotoTag, removeAlbumTag, deleteTag,
+      removePhotoTag, removeAlbumTag, deleteTag, moveTag,
       getComment, getCommentShared, setComment,
       commentTimes: privateData.commentTimes,
       sharedCommentTimes: sharedData.commentTimes,

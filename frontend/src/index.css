@@ -326,6 +326,11 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   border-bottom: 1px solid #fff2;
 }
 .map-panel .grid-header { background: #111; }
+/* Negative top = stick at container border edge, not content edge — prevents padding-top gap */
+.timeline-main .grid-header,
+.tags-main     .grid-header { top: -1rem;   padding-top: calc(.4rem + 1rem); }
+.panel-body    .grid-header { top: -.5rem;  padding-top: calc(.4rem + .5rem); }
+.latest-body   .grid-header { top: -.75rem; padding-top: calc(.4rem + .75rem); }
 .grid-header-above { width: 100%; }
 .grid-header-above .tags-header { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
 .grid-header-above .month-strip { margin-bottom: 0; }
@@ -1094,6 +1099,33 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 }
 .tag-delete-btn:hover { background: #3b1212; }
 
+/* Tag scope toggle (private ↔ family) */
+.tag-scope-toggle {
+  display: inline-flex; align-items: center; gap: .5rem;
+  cursor: pointer; user-select: none;
+  font-size: .8rem; color: #aaa;
+  padding: .25rem .5rem;
+  border: 1px solid #2a2a2a; border-radius: 6px;
+  transition: border-color .15s;
+}
+.tag-scope-toggle:hover { border-color: #444; color: #ddd; }
+.tag-scope-toggle input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 32px; height: 18px; border-radius: 9px;
+  background: #333; border: 1px solid #555;
+  position: relative; cursor: pointer; flex-shrink: 0;
+  transition: background .2s;
+}
+.tag-scope-toggle input[type="checkbox"]::after {
+  content: ''; position: absolute;
+  top: 2px; left: 2px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #888; transition: left .2s, background .2s;
+}
+.tag-scope-toggle input[type="checkbox"]:checked { background: #1a3a1a; border-color: #4a8a4a; }
+.tag-scope-toggle input[type="checkbox"]:checked::after { left: 16px; background: #6ecf6e; }
+.tag-scope-label { white-space: nowrap; }
+
 /* Album cards */
 .tagged-albums   { margin-bottom: 1.5rem; }
 .tagged-section-label { font-size: .8rem; color: #666; margin-bottom: .6rem; }
@@ -1265,7 +1297,15 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   align-items: center;
   gap: .6rem;
   padding: .65rem .9rem .5rem;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 6px 6px 0 0;
 }
+.latest-tag-header:hover { background: #1e1e1e; }
+.latest-tag-header:hover .latest-tag-name { color: #FF7A00; }
 .latest-tag-icon { font-size: 1rem; flex-shrink: 0; }
 .latest-tag-name { font-size: .9rem; font-weight: 600; color: #e0e0e0; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .latest-tag-meta { font-size: .72rem; color: #505050; flex-shrink: 0; }
@@ -1276,12 +1316,22 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   padding: 0 .9rem .7rem;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
 }
 .latest-strip::-webkit-scrollbar { height: 4px; }
 .latest-strip::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 .latest-strip-cell {
   flex-shrink: 0;
   position: relative;
+}
+.latest-strip-thumb-btn {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 6px;
 }
 .latest-strip-thumb {
   width: 120px;
@@ -1762,6 +1812,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 
   /* Timeline main */
   .timeline-main  { padding: .7rem; }
+  .timeline-main .grid-header { top: -.7rem; padding-top: calc(.4rem + .7rem); }
 
   /* Photo grid: flex, smaller tiles on mobile */
   .photo-grid     { gap: 3px; }
@@ -1801,6 +1852,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   .latest-subtabs { padding: .5rem .6rem; gap: .35rem; }
   .latest-pill    { padding: .3rem .7rem; font-size: .78rem; }
   .latest-body    { padding: .5rem .6rem; }
+  .latest-body .grid-header { top: -.5rem; padding-top: calc(.4rem + .5rem); }
   .latest-thumb   { width: 42px; height: 42px; }
 }
 
