@@ -591,9 +591,9 @@ export default function TagsView() {
         {!sel && <div className="timeline-hint">{tr.noTags}</div>}
 
         {/* Personal / Shared tag content */}
-        {sel && entry && (
-          <>
-            <div className="tags-header tags-header--sticky">
+        {sel && entry && (() => {
+          const tagHeader = (
+            <div className="tags-header">
               <h2 className="tags-selected-name">
                 {sel.scope === 'private' ? '🔒' : '👤'} {sel.name}
                 {sel.scope === 'shared' && (
@@ -610,38 +610,44 @@ export default function TagsView() {
                 </button>
               )}
             </div>
+          );
+          return (
+            <>
+              {/* Standalone header only when there are no individual photos (albums only or empty) */}
+              {entry.photos.length === 0 && tagHeader}
 
-            {entry.albums.length > 0 && (
-              <div className="tagged-albums">
-                <h4 className="tagged-section-label">{entry.albums.length} {tr.taggedAlbums}</h4>
-                <div className="album-cards">
-                  {entry.albums.map(a => (
-                    <div key={a.key} className="album-card">
-                      <span className="album-card-title">📁 {a.title}</span>
-                      <button className="album-card-open"
-                        onClick={() => setExpandedAlbum(expandedAlbum === a.key ? null : a.key)}>
-                        {expandedAlbum === a.key ? '▲' : '▼'} {tr.openAlbum}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                {expandedAlbum && (
-                  <div className="album-expand">
-                    {albumLoading && <p className="panel-loading">{tr.loading}</p>}
-                    {albumPhotos  && (
-                      <PhotoGrid photos={albumPhotos} navMode="tags" />
-                    )}
+              {entry.albums.length > 0 && (
+                <div className="tagged-albums">
+                  <h4 className="tagged-section-label">{entry.albums.length} {tr.taggedAlbums}</h4>
+                  <div className="album-cards">
+                    {entry.albums.map(a => (
+                      <div key={a.key} className="album-card">
+                        <span className="album-card-title">📁 {a.title}</span>
+                        <button className="album-card-open"
+                          onClick={() => setExpandedAlbum(expandedAlbum === a.key ? null : a.key)}>
+                          {expandedAlbum === a.key ? '▲' : '▼'} {tr.openAlbum}
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                )}
-              </div>
-            )}
+                  {expandedAlbum && (
+                    <div className="album-expand">
+                      {albumLoading && <p className="panel-loading">{tr.loading}</p>}
+                      {albumPhotos  && (
+                        <PhotoGrid photos={albumPhotos} navMode="tags" />
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {entry.photos.length > 0
-              ? <PhotoGrid photos={entry.photos} navMode="tags" defaultSort="newest" />
-              : !entry.albums.length ? <p className="panel-loading">{tr.noTaggedPhotos}</p> : null
-            }
-          </>
-        )}
+              {entry.photos.length > 0
+                ? <PhotoGrid photos={entry.photos} navMode="tags" defaultSort="newest" headerAbove={tagHeader} />
+                : !entry.albums.length ? <p className="panel-loading">{tr.noTaggedPhotos}</p> : null
+              }
+            </>
+          );
+        })()}
 
         {/* System tag content */}
         {sel?.scope === 'system' && (
