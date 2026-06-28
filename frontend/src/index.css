@@ -2185,6 +2185,35 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 }
 .confirm-delete:hover { background: #7f1d1d; }
 
+/* ── WhatsApp share dialog ────────────────────────────────────────── */
+.wa-share-dialog {
+  background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px;
+  padding: 1.25rem; width: min(340px, 92vw);
+  display: flex; flex-direction: column; gap: .9rem;
+}
+.wa-share-header {
+  display: flex; align-items: center; gap: .5rem;
+  font-size: .95rem; font-weight: 600; color: #eee;
+}
+.wa-share-preview {
+  width: 100%; max-height: 220px; object-fit: cover;
+  border-radius: 8px; display: block;
+}
+.wa-share-caption {
+  width: 100%; resize: vertical; min-height: 64px;
+  background: #111; border: 1px solid #333; border-radius: 6px;
+  color: #ddd; font-size: .9rem; padding: .5rem .6rem;
+  font-family: inherit; box-sizing: border-box;
+}
+.wa-share-caption:focus { outline: none; border-color: #25D366; }
+.wa-share-actions { display: flex; gap: .6rem; justify-content: flex-end; }
+.wa-share-send {
+  background: #25D366; color: #fff; border: none; border-radius: 6px;
+  padding: .4rem 1.1rem; font-size: .85rem; font-weight: 600; cursor: pointer;
+}
+.wa-share-send:hover { background: #1ebe5a; }
+.wa-share-send:disabled { opacity: .6; cursor: default; }
+
 /* ── Trash view ───────────────────────────────────────────────────── */
 .trash-view {
   flex: 1;

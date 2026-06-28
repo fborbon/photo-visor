@@ -116,6 +116,7 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
   const [commentPhoto, setCommentPhoto] = useState<PhotoEntry | null>(null);
   const [sortOrder,    setSortOrder]    = useState<SortOrder>(defaultSort);
   const [mobileNavIdx, setMobileNavIdx] = useState<number | null>(null);
+  const [waShare,      setWaShare]      = useState<{ photo: PhotoEntry; caption: string; sending: boolean } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const scrollParent = (): HTMLElement | null => {
@@ -511,28 +512,17 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
                       onTouchEnd={e => { e.preventDefault(); e.stopPropagation(); setMobileNavIdx(null); goPath(); }}
                     >📂</button>
                   )}
-                  {p.thumb && (() => {
-                    const shareUrl = config.cloudFrontUrl + '/' + (p.s3_key ?? p.thumb);
-                    const doShare = () => {
-                      setMobileNavIdx(null);
-                      if (navigator.share) {
-                        navigator.share({ url: shareUrl }).catch(() => {});
-                      } else {
-                        window.open('https://wa.me/?text=' + encodeURIComponent(shareUrl), '_blank');
-                      }
-                    };
-                    return (
-                      <button className="thumb-nav-btn thumb-wa-btn" title="Share via WhatsApp"
-                        onClick={doShare}
-                        onTouchEnd={e => { e.preventDefault(); e.stopPropagation(); doShare(); }}
-                      >
-                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
-                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-                          <path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.554 4.122 1.524 5.855L0 24l6.337-1.506A11.946 11.946 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.793 9.793 0 0 1-5.001-1.373l-.36-.214-3.721.885.916-3.619-.236-.373A9.79 9.79 0 0 1 2.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/>
-                        </svg>
-                      </button>
-                    );
-                  })()}
+                  {p.thumb && (
+                    <button className="thumb-nav-btn thumb-wa-btn" title="Share via WhatsApp"
+                      onClick={() => { setMobileNavIdx(null); setWaShare({ photo: p, caption: '', sending: false }); }}
+                      onTouchEnd={e => { e.preventDefault(); e.stopPropagation(); setMobileNavIdx(null); setWaShare({ photo: p, caption: '', sending: false }); }}
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                        <path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.554 4.122 1.524 5.855L0 24l6.337-1.506A11.946 11.946 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.793 9.793 0 0 1-5.001-1.373l-.36-.214-3.721.885.916-3.619-.236-.373A9.79 9.79 0 0 1 2.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/>
+                      </svg>
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -597,6 +587,67 @@ export default function PhotoGrid({ photos, albumKey, title, placeFallback = '',
           onSave={(text, shared) => setComment(commentPhoto.hash, text, shared)}
           onClose={() => setCommentPhoto(null)}
         />
+      )}
+
+      {/* WhatsApp share modal */}
+      {waShare && (
+        <div className="modal-overlay" onClick={() => !waShare.sending && setWaShare(null)}>
+          <div className="wa-share-dialog" onClick={e => e.stopPropagation()}>
+            <div className="wa-share-header">
+              <svg viewBox="0 0 24 24" fill="#25D366" width="20" height="20">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                <path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.554 4.122 1.524 5.855L0 24l6.337-1.506A11.946 11.946 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.793 9.793 0 0 1-5.001-1.373l-.36-.214-3.721.885.916-3.619-.236-.373A9.79 9.79 0 0 1 2.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/>
+              </svg>
+              <span>Share via WhatsApp</span>
+            </div>
+            {waShare.photo.thumb && (
+              <img
+                className="wa-share-preview"
+                src={config.cloudFrontUrl + '/' + waShare.photo.thumb}
+                alt=""
+              />
+            )}
+            <textarea
+              className="wa-share-caption"
+              placeholder="Add a message (optional)…"
+              value={waShare.caption}
+              rows={3}
+              onChange={e => setWaShare(s => s && { ...s, caption: e.target.value })}
+              disabled={waShare.sending}
+            />
+            <div className="wa-share-actions">
+              <button className="confirm-cancel" onClick={() => setWaShare(null)} disabled={waShare.sending}>
+                Cancel
+              </button>
+              <button
+                className="wa-share-send"
+                disabled={waShare.sending}
+                onClick={async () => {
+                  setWaShare(s => s && { ...s, sending: true });
+                  const { photo, caption } = waShare;
+                  const thumbUrl = config.cloudFrontUrl + '/' + photo.thumb;
+                  try {
+                    const res  = await fetch(thumbUrl);
+                    const blob = await res.blob();
+                    const ext  = blob.type.includes('png') ? 'png' : blob.type.includes('gif') ? 'gif' : 'jpg';
+                    const file = new File([blob], `photo.${ext}`, { type: blob.type });
+                    if (navigator.canShare?.({ files: [file] })) {
+                      await navigator.share({ files: [file], text: caption });
+                    } else if (navigator.share) {
+                      await navigator.share({ url: thumbUrl, text: caption });
+                    } else {
+                      const msg = caption ? caption + '\n' + thumbUrl : thumbUrl;
+                      window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+                    }
+                  } catch { /* user cancelled */ }
+                  setWaShare(null);
+                }}
+              >
+                {waShare.sending ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Full-screen modal */}
