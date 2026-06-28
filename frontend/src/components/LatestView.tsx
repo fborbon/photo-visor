@@ -273,7 +273,6 @@ export default function LatestView() {
                   <div key={c.hash} className="latest-comment-card">
                     <div className="latest-comment-header">
                       <span className="latest-comment-text">💬 "{c.text}"</span>
-                      <span className="latest-item-date">{fmt(c.updatedAt, months)}</span>
                     </div>
                     {c.photo && <PhotoGrid photos={[c.photo]} navMode="latest" hideHeader />}
                   </div>
